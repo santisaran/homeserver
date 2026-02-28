@@ -1,0 +1,30 @@
+services:
+  jellyfin:
+    image: jellyfin/jellyfin
+    container_name: jellyfin
+    user: 1000:1000
+    network_mode: 'host'
+    volumes:
+      - ./config:/config
+      - ./cache:/cache
+      - type: bind
+        source: /mnt/externo/Videos
+        target: /videos
+      - type: bind
+        source: /mnt/externo/Música
+        target: /music
+        read_only: true
+    restart: 'unless-stopped'
+    # Optional - alternative address used for autodiscovery
+    environment:
+      - JELLYFIN_PublishedServerUrl=http://example.com
+    # Optional - may be necessary for docker healthcheck to pass if running in host network mode
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    labels:
+      - flame.type=application # "app" works too
+      - flame.name=jellyfin
+      - flame.url=http://192.168.0.247:8096
+      - traefik.http.services.jellyfin.loadbalancer.server.port
+        #      - flame.icon=icon-name # optional, default is "docker"
+    # - flame.icon=custom to make changes in app. ie: custom icon upload

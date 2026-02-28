@@ -1,0 +1,16 @@
+services: 
+  music-assistant-server: 
+    image: ghcr.io/music-assistant/server:latest 
+    container_name: music-assistant-server 
+    restart:  unless-stopped
+    network_mode: host 
+    volumes: 
+      - ${USERDIR:-$HOME}/dockers/musicassistant/data:/data/
+      - /mnt/externo/Música:/media/
+    cap_add: 
+      - SYS_ADMIN 
+      - DAC_READ_SEARCH 
+    security_opt: 
+      - apparmor:unconfined 
+    environment:
+        - LOG_LEVEL=info

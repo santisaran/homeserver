@@ -1,0 +1,50 @@
+# ─── Secretos — NUNCA subir al repo ──────────────────────────────────────────
+.env
+*.env
+!*.env.template
+duckdns.ini
+.secrets
+*.ini
+*.key
+*.pem
+
+# ─── Datos generados por los contenedores ─────────────────────────────────────
+# (estos van al backup de Restic, no a git)
+hass/homeassistant/
+hass/zigbee2mqtt/
+hass/mosquitto/data/
+hass/mosquitto/log/
+hass/nodered/
+hass/otbr/
+
+immich/pgdata/
+
+paperless/data/
+paperless/media/
+paperless/pgdata/
+paperless/consume/
+
+jellyfin/config/
+jellyfin/cache/
+
+esphome/config/
+
+flame/data/
+
+transmission/config/
+
+wg-easy/data/
+
+minecraft/
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+backup/backup.log
+
+# ─── Certbot (los certs van al backup de Restic, no a git) ────────────────────
+nginx/certbot/conf/
+nginx/certbot/www/
+nginx/certbot/log/
+
+# ─── Dockge state ─────────────────────────────────────────────────────────────
+dockge/data/

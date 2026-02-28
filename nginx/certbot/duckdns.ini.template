@@ -1,0 +1,6 @@
+# Credenciales DuckDNS para certbot-dns-duckdns
+# Permisos requeridos: chmod 600 duckdns.ini
+#
+# Tu token DuckDNS: https://www.duckdns.org/
+
+dns_duckdns_token = TU_TOKEN_DUCKDNS_AQUI

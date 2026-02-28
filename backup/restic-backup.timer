@@ -1,0 +1,15 @@
+[Unit]
+Description=Timer diario para backup Restic a Backblaze B2
+
+[Timer]
+# Ejecutar todos los días a las 3:00 AM
+OnCalendar=*-*-* 03:00:00
+
+# Si la PC estaba apagada a las 3 AM, ejecutar al encenderse
+Persistent=true
+
+# Dispersión aleatoria de hasta 30 min (evita picos si hay varios timers)
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

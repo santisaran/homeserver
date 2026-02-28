@@ -1,0 +1,22 @@
+[Unit]
+Description=Restic backup a Backblaze B2
+After=network-online.target
+Wants=network-online.target
+# No iniciar si el disco externo no está montado
+RequiresMountsFor=/mnt/externo
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/bin/bash /home/santiagopaleka/dockers/backup/backup.sh
+
+# Límite de tiempo: si tarda más de 4 horas, algo falló
+TimeoutStartSec=4h
+
+# Reintentar en caso de fallo de red
+Restart=on-failure
+RestartSec=5min
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=restic-backup

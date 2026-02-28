@@ -1,0 +1,15 @@
+services:
+  syncthing:
+    image: syncthing/syncthing
+    container_name: casa-syncthing
+    hostname: casa-syncthing
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - STGUIADDRESS=
+    volumes:
+      - /mnt/externo/synchthing:/var/syncthing
+      - /mnt/externo/fotos/celuSanti:/var/synchthing/celuSanti
+      - /mnt/externo/fotos/celuVicky:/var/synchthing/celuVicky
+    network_mode: host
+    restart: unless-stopped

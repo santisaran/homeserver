@@ -1,0 +1,24 @@
+---
+services:
+  transmission:
+    image: lscr.io/linuxserver/transmission:latest
+    container_name: transmission
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Argentina/Buenos_Aires
+      - TRANSMISSION_WEB_HOME= #optional
+      - USER=${TRANSMISSION_USER:-saran} #optional
+      - PASS=${TRANSMISSION_PASS:-CAMBIAR_PASSWORD} #optional
+      - WHITELIST= #optional
+      - PEERPORT= #optional
+      - HOST_WHITELIST= #optional
+    volumes:
+      - ./config:/config
+      - ${DOWNLOADS_DIR:-/home/santiagopaleka/Descargas}:/downloads
+      - ${WATCH_DIR:-/home/santiagopaleka/torrents}:/watch
+    ports:
+      - 9091:9091
+      - 51413:51413
+      - 51413:51413/udp
+    restart: unless-stopped
