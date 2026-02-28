@@ -8,10 +8,10 @@ services:
       - ./config:/config
       - ./cache:/cache
       - type: bind
-        source: /mnt/externo/Videos
+        source: /mnt/discocho/Videos
         target: /videos
       - type: bind
-        source: /mnt/externo/Música
+        source: /mnt/discocho/Música
         target: /music
         read_only: true
     restart: 'unless-stopped'

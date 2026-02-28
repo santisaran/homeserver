@@ -6,7 +6,7 @@ services:
     network_mode: host 
     volumes: 
       - ${USERDIR:-$HOME}/dockers/musicassistant/data:/data/
-      - /mnt/externo/Música:/media/
+      - /mnt/discocho/Música:/media/
     cap_add: 
       - SYS_ADMIN 
       - DAC_READ_SEARCH 

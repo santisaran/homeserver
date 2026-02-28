@@ -3,7 +3,7 @@ Description=Restic backup a Backblaze B2
 After=network-online.target
 Wants=network-online.target
 # No iniciar si el disco externo no está montado
-RequiresMountsFor=/mnt/externo
+RequiresMountsFor=/mnt/discocho
 
 [Service]
 Type=oneshot

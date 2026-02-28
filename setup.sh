@@ -9,7 +9,7 @@
 set -e
 
 DOCKERS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MEDIA_DISK="/mnt/externo"
+MEDIA_DISK="/mnt/discocho"
 
 echo "=== [1/6] Creando red Docker compartida para nginx (proxy_net) ==="
 docker network create proxy_net 2>/dev/null && echo "  ✓ proxy_net creada" \

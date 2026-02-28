@@ -57,7 +57,7 @@ services:
     volumes:
       - ./data:/usr/src/paperless/data
       - ./media:/usr/src/paperless/media
-      - /mnt/externo/paperless_ngx_backup:/usr/src/paperless/export
+      - /mnt/discocho/paperless_ngx_backup:/usr/src/paperless/export
       - ./consume:/usr/src/paperless/consume
     env_file: docker-compose.env
     environment:
