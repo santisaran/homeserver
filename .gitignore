@@ -18,6 +18,7 @@ hass/nodered/
 hass/otbr/
 
 immich/pgdata/
+immich/database/
 
 paperless/data/
 paperless/media/
@@ -48,3 +49,7 @@ nginx/certbot/log/
 
 # ─── Dockge state ─────────────────────────────────────────────────────────────
 dockge/data/
+
+/.esphome/
+/secrets.yaml
+archive/*

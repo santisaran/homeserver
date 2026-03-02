@@ -15,25 +15,25 @@ services:
     privileged: true
     network_mode: host
 
-  zigbee2mqtt:
-    container_name: zigbee2mqtt
-    image: ghcr.io/koenkk/zigbee2mqtt
-    restart: unless-stopped
-    group_add:
-      - dialout
-    user: 1000:1000
-    volumes:
-      - ./zigbee2mqtt:/app/data
-      - /run/udev:/run/udev:ro
-        #   ports:
-        #      - 8080:8080
-    environment:
-      - TZ=America/Argentina/Buenos_Aires
-    devices:
-      - /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0:/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
-    network_mode: host
-    depends_on:
-      - mosquitto
+#  zigbee2mqtt:
+#    container_name: zigbee2mqtt
+#    image: ghcr.io/koenkk/zigbee2mqtt
+#    restart: unless-stopped
+#    group_add:
+#      - dialout
+#    user: 1000:1000
+#    volumes:
+#      - ./zigbee2mqtt:/app/data
+#      - /run/udev:/run/udev:ro
+#    ports:
+#      - 8080:8080
+#    environment:
+#      - TZ=America/Argentina/Buenos_Aires
+#    devices:
+#      - /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0:/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+#    network_mode: host
+#    depends_on:
+#      - mosquitto
 
   mosquitto:
     image: eclipse-mosquitto:latest
@@ -70,24 +70,18 @@ services:
     group_add:
       - dialout  # Para acceso a puertos serie
 
-  otbr:
-    container_name: otbr
-    image: openthread/border-router:latest
-    hostname: otbr
-    environment:
-      - TZ=America/Argentina/Buenos_Aires
-      - OT_RCP_DEVICE=spinel+hdlc+uart:///dev/ttyUSB1?uart-baudrate=460800
-      - OT_INFRA_IF=enp2s0
-      - OT_THREAD_IF=wpan0
-      - OT_LOG_LEVEL=7
-    network_mode: host
-    privileged: true
-    volumes:
-      - ./otbr:/data
-    devices:
-      #      - source: /dev/serial/by-id/usb-Prolific_Technology_Inc._USB-Serial_Controller-if00-port0
-      #  target: /dev/ttyUSB0
-      - /dev/ttyUSB1:/dev/ttyUSB1
-      - /dev/net/tun:/dev/net/tun
-    restart: always
-
+#  otbr:
+#    container_name: otbr
+#    image: openthread/otbr:latest
+#    hostname: otbr
+#    environment:
+#      - TZ=America/Argentina/Buenos_Aires
+#    network_mode: host
+#    privileged: true
+#    volumes:
+#      - ./otbr/etc:/etc/otbr
+#      - ./otbr/var:/var/lib/otbr
+#    devices:
+#      - source: "/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_FC:01:2C:F5:E6:98-if00"
+#        target: /dev/ttyACM0
+#    restart: unless-stopped

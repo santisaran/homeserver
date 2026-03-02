@@ -3,7 +3,7 @@ services:
     container_name: esphome
     image: esphome/esphome
     volumes:
-      - ./config:/config
+      - ./conf:/config
       - /etc/localtime:/etc/localtime:ro
     restart: always
     privileged: true

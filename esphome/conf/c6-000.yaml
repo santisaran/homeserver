@@ -1,0 +1,47 @@
+esphome:
+  name: c6-000
+  friendly_name: C6-000
+
+esp32:
+  board: esp32-c6-devkitc-1
+  framework:
+    type: esp-idf
+
+network:
+  enable_ipv6: true
+
+openthread:
+  tlv: 0e080000000000010000000300000b4a0300001a35060004001fffe0020859ac655be3cb88d10708fda3dfa1eadb077a0510877558b257c1426e4943b493e59a1d75030f4f70656e5468726561642d3662393201026b9204108679f2d87de782cd93647d1520443ed00c0402a0f7f8
+  device_type: MTD
+  channel: 11
+  network_name: OpenThread-6b92
+  #network_key: 0xdfd34f0f05cad978ec4e32b0413038ff
+  #pan_id: 0x6b92
+  #ext_pan_id: 0x59ac655be3cb88d1
+  #pskc: 0xc23a76e98f1a6483639b1ac1271e2e27
+  #mesh_local_prefix: fd53:145f:ed22:ad81::/64
+  #force_dataset: true
+
+#Dataset id: 01K310KK305YS9SDC2HT88EPVE
+
+# Enable logging
+logger:
+
+
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+light:
+  - platform: esp32_rmt_led_strip
+    rgb_order: GRB
+    pin: GPIO08
+    num_leds: 1
+    chipset: ws2812
+    name: "Obl c6-000"

@@ -1,0 +1,52 @@
+esphome:
+  name: c6001
+  friendly_name: c6001
+
+esp32:
+  board: esp32-c6-devkitc-1
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "C6001 Fallback Hotspot"
+    password: !secret wifi_ap_password
+
+captive_portal:
+
+one_wire:
+  - platform: gpio
+    pin: GPIO20
+  
+    
+light:
+  - platform: esp32_rmt_led_strip
+    rgb_order: GRB
+    pin: GPIO08
+    num_leds: 1
+    chipset: ws2812
+    name: "Obl c6-001"
+
+light:
+  - platform: esp32_rmt_led_strip
+    rgb_order: GRB
+    pin: GPIO20
+    num_leds: 1
+    chipset: ws2812
+    name: "Obl c6-001"
