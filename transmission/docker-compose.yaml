@@ -15,8 +15,8 @@ services:
       - HOST_WHITELIST= #optional
     volumes:
       - ./config:/config
-      - ${DOWNLOADS_DIR:-/home/santiagopaleka/Descargas}:/downloads
-      - ${WATCH_DIR:-/home/santiagopaleka/torrents}:/watch
+      - ${DOWNLOADS_DIR:-/mnt/discocho/Descargas}:/downloads
+      - ${WATCH_DIR:-/home/saran/torrents}:/watch
     ports:
       - 9091:9091
       - 51413:51413

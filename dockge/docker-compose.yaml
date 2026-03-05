@@ -9,7 +9,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/app/data
       # El directorio donde viven todos tus stacks
-      - ${STACKS_DIR:-/home/santiagopaleka/dockers}:/opt/stacks
+      - ${STACKS_DIR:-/home/saran/docker/homeserver}:/opt/stacks
     environment:
       - DOCKGE_STACKS_DIR=/opt/stacks
       - DOCKGE_ENABLE_CONSOLE=true
