@@ -53,3 +53,5 @@ dockge/data/
 /.esphome/
 /secrets.yaml
 archive/*
+
+*password.txt
