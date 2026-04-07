@@ -1,0 +1,30 @@
+services:
+  hytale:
+    # Reemplaza esta imagen cuando exista una oficial o confiable.
+    image: ubuntu:24.04
+    container_name: hytale-server
+    working_dir: /opt/hytale
+    command: ["bash", "-lc", "echo 'Plantilla Hytale lista. Coloca binarios en /opt/hytale y ajusta command.' && sleep infinity"]
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ:-UTC}
+      HYTALE_MEMORY: ${HYTALE_MEMORY:-4G}
+      HYTALE_WORLD_NAME: ${HYTALE_WORLD_NAME:-world}
+      HYTALE_EXTRA_ARGS: ${HYTALE_EXTRA_ARGS:-}
+    ports:
+      # Placeholder: ajusta según puertos oficiales cuando estén documentados.
+      - "${HYTALE_GAME_PORT:-25570}:${HYTALE_GAME_PORT:-25570}/udp"
+      - "${HYTALE_GAME_PORT:-25570}:${HYTALE_GAME_PORT:-25570}/tcp"
+    volumes:
+      - ./server:/opt/hytale
+      - ./data:/data
+      - ./logs:/logs
+    restart: unless-stopped
+
+    # Limita recursos si quieres.
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "2.0"
+    #       memory: 6G
