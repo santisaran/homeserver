@@ -1,0 +1,13 @@
+services:
+  notificadores-mqtt:
+    build: .
+    container_name: notificadores_worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - TZ=America/Argentina/Buenos_Aires
+      - PYTHONUNBUFFERED=1

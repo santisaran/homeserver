@@ -41,11 +41,19 @@ minecraft/
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 *.log
 backup/backup.log
+*log.*.gz
+logs
 
 # ─── Certbot (los certs van al backup de Restic, no a git) ────────────────────
 nginx/certbot/conf/
 nginx/certbot/www/
 nginx/certbot/log/
+
+
+# stremio
+httpsCert.json
+stremio/stremio/*
+ 
 
 # ─── Dockge state ─────────────────────────────────────────────────────────────
 dockge/data/

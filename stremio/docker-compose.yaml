@@ -1,0 +1,14 @@
+services:
+  stremio:
+    image: tsaridas/stremio-docker:latest
+    container_name: stremio
+    restart: unless-stopped
+    environment:
+      - NO_CORS=1
+      - IPADDRESS=192.168.1.118
+    ports:
+      - "8180:8080"
+      - "11470:11470"
+      - "12470:12470"
+    volumes:
+      - ./stremio/:/root/.stremio-server

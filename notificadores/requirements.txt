@@ -1,0 +1,6 @@
+mqtt
+requests
+gunicorn
+bs4
+dotenv
+paho-mqtt

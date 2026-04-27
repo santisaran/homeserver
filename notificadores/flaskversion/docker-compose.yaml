@@ -1,0 +1,15 @@
+services:
+  notificadores-api:
+    build: .
+    container_name: notificadores_api
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env
+    ports:
+      - "5550:5550"
+    environment:
+      - TZ=America/Argentina/Buenos_Aires
+
+networks: {}
+

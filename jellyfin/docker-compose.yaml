@@ -31,7 +31,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'          # Máximo 2 núcleos (ajusta a tu gusto)
-          memory: 4G           # Evita que se coma toda la RAM
+          cpus: '2.0'          # Máximo 2 núcleos
+          memory: 4G           #
         reservations:
           cpus: '0.5'          # Mínimo garantizado

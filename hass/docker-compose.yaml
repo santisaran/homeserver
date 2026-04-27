@@ -1,7 +1,7 @@
 services:
   homeassistant:
     container_name: homeassistant
-    image: "ghcr.io/home-assistant/home-assistant:stable"
+    image: ghcr.io/home-assistant/home-assistant:stable
     environment:
       - PUID=1000
       - PGID=1000
@@ -11,64 +11,67 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /run/dbus:/run/dbus:ro
       - /var/run/docker.sock:/var/run/docker.sock
+      - /home/saran/notificadores:/config/scripts
     restart: unless-stopped
     privileged: true
     network_mode: host
-
-#  zigbee2mqtt:
-#    container_name: zigbee2mqtt
-#    image: ghcr.io/koenkk/zigbee2mqtt
-#    restart: unless-stopped
-#    group_add:
-#      - dialout
-#    user: 1000:1000
-#    volumes:
-#      - ./zigbee2mqtt:/app/data
-#      - /run/udev:/run/udev:ro
-#    ports:
-#      - 8080:8080
-#    environment:
-#      - TZ=America/Argentina/Buenos_Aires
-#    devices:
-#      - /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0:/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
-#    network_mode: host
-#    depends_on:
-#      - mosquitto
+  #  zigbee2mqtt:
+  #    container_name: zigbee2mqtt
+  #    image: ghcr.io/koenkk/zigbee2mqtt
+  #    restart: unless-stopped
+  #    group_add:
+  #      - dialout
+  #    user: 1000:1000
+  #    volumes:
+  #      - ./zigbee2mqtt:/app/data
+  #      - /run/udev:/run/udev:ro
+  #    ports:
+  #      - 8080:8080
+  #    environment:
+  #      - TZ=America/Argentina/Buenos_Aires
+  #    devices:
+  #      - /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0:/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+  #    network_mode: host
+  #    depends_on:
+  #      - mosquitto
 
   mosquitto:
     image: eclipse-mosquitto:latest
     container_name: mosquitto
-    user: "1000:1000"
     environment:
       - UID=1000
       - GID=1000
     ports:
-      - "1883:1883"  # MQTT port
-      - "9001:9001"  # WebSockets port
+      - 1883:1883 # MQTT port
+      - 8883:8883 # MQTT TLS port
+      - 9001:9001 # WebSockets port
     volumes:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
+      - ../nginx/certbot/conf:/etc/letsencrypt:ro
     restart: unless-stopped
 
-  nodered:
-    container_name: nodered
-    image: nodered/node-red:latest
-    volumes:
-      - ./nodered:/data
-    ports:
-      - "1880:1880"
-    restart: unless-stopped
-    environment:
-      - TZ=America/Argentina/Buenos_Aires
-    # Agrega aquí tu STM32 cuando lo conectes:
-    # devices:
-    #   - /dev/serial/by-id/usb-STM32_Virtual_ComPort-if00:/dev/ttyUSB1
-    depends_on:
-      - mosquitto
-    user: "1000:1000"
-    group_add:
-      - dialout  # Para acceso a puertos serie
+    
+#  nodered:
+#    container_name: nodered
+#    image: nodered/node-red:latest
+#    volumes:
+#      - ./nodered:/data
+#    ports:
+#      - 1880:1880
+#    restart: unless-stopped
+#    environment:
+#      - TZ=America/Argentina/Buenos_Aires
+#    # Agrega aquí tu STM32 cuando lo conectes:
+#    # devices:
+#    #   - /dev/serial/by-id/usb-STM32_Virtual_ComPort-if00:/dev/ttyUSB1
+#    depends_on:
+#      - mosquitto
+#    user: 1000:1000
+#    group_add:
+#      - dialout # Para acceso a puertos serie
+networks: {}
 
 #  otbr:
 #    container_name: otbr
