@@ -4,9 +4,18 @@ import requests
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+import logging
 import os
+import sys
 
 load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+log = logging.getLogger(__name__)
 
 # --- CONFIGURACIÓN ---
 
@@ -51,7 +60,7 @@ def enviar_telegram(notificacion):
         response = requests.post(url, json=payload)
         response.raise_for_status()
     except Exception as e:
-        print(f"Error enviando a Telegram: {e}")
+        log.error("Error enviando a Telegram: %s", e, exc_info=True)
 
 def procesar_y_notificar(html_content):
     # Inicializar DB y limpiar registros > 4 días
@@ -112,7 +121,7 @@ if __name__ == "__main__":
         # Aquí iría tu lógica de login y obtención del HTML
         html = scraping_unlz() 
         procesar_y_notificar(html)
-        print(f"Check finalizado: {datetime.now()}")
+        log.info("Check finalizado: %s", datetime.now())
     except Exception as e:
-        print(f"Error en el loop: {e}")
+        log.error("Error en el loop: %s", e, exc_info=True)
     

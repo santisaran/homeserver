@@ -38,6 +38,8 @@ wg-easy/data/
 
 minecraft/
 
+notificadores/data/*
+
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 *.log
 backup/backup.log

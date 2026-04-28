@@ -2,17 +2,19 @@ import re
 import html
 import requests
 import logging
+import sqlite3
+import hashlib
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import os
+import sys
 
 load_dotenv()
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("nuestra_tierra.log", encoding="utf-8")
+        logging.StreamHandler(sys.stdout)
     ]
 )
 log = logging.getLogger(__name__)
@@ -31,6 +33,121 @@ class AcadeuMonitor:
         self.chat_id = os.getenv("TELEGRAM_CHAT_ID")
         self.db_path = "data/notificaciones.db"
         self.session: requests.Session | None = None
+        self._init_db()
+
+    def _db_connect(self):
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        return sqlite3.connect(self.db_path)
+
+    def _init_db(self):
+        """Inicializa tablas para deduplicación y hilos DEBATE."""
+        with self._db_connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS nt_sent_messages (
+                    message_key TEXT PRIMARY KEY,
+                    sent_at TEXT NOT NULL
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS nt_debate_threads (
+                    conversation_key TEXT PRIMARY KEY,
+                    root_message_id INTEGER NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.commit()
+
+    def _already_sent(self, message_key: str) -> bool:
+        with self._db_connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT 1 FROM nt_sent_messages WHERE message_key = ?",
+                (message_key,),
+            )
+            return cur.fetchone() is not None
+
+    def _mark_sent(self, message_key: str):
+        with self._db_connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT OR IGNORE INTO nt_sent_messages(message_key, sent_at) VALUES (?, ?)",
+                (message_key, datetime.now().isoformat()),
+            )
+            conn.commit()
+
+    def _get_debate_root_message_id(self, conversation_key: str) -> int | None:
+        with self._db_connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT root_message_id FROM nt_debate_threads WHERE conversation_key = ?",
+                (conversation_key,),
+            )
+            row = cur.fetchone()
+            return int(row[0]) if row else None
+
+    def _set_debate_root_message_id(self, conversation_key: str, root_message_id: int):
+        with self._db_connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO nt_debate_threads(conversation_key, root_message_id, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(conversation_key)
+                DO UPDATE SET root_message_id = excluded.root_message_id,
+                              updated_at = excluded.updated_at
+                """,
+                (conversation_key, root_message_id, datetime.now().isoformat()),
+            )
+            conn.commit()
+
+    @staticmethod
+    def _pick_first_nonempty(data: dict, keys: list[str], default: str = "") -> str:
+        for key in keys:
+            value = data.get(key)
+            if value not in (None, ""):
+                return str(value)
+        return default
+
+    def _conversation_mode(self, data: dict) -> str:
+        mode = self._pick_first_nonempty(
+            data,
+            ["modo", "tipo", "tipoConversacion", "modoConversacion"],
+            default="",
+        )
+        return mode.upper()
+
+    def _conversation_key(self, data: dict, asunto: str) -> str:
+        raw_key = self._pick_first_nonempty(
+            data,
+            ["id", "idConversacion", "conversacionId", "uuid", "codigo"],
+            default="",
+        )
+        if raw_key:
+            return f"conv:{raw_key}"
+        fallback = hashlib.sha256(asunto.strip().lower().encode("utf-8")).hexdigest()[:16]
+        return f"conv:asunto:{fallback}"
+
+    @staticmethod
+    def _message_key(conversation_key: str, msg: dict) -> str:
+        msg_id = msg.get("id")
+        if msg_id not in (None, ""):
+            return f"{conversation_key}:msg:{msg_id}"
+
+        seed = "|".join(
+            [
+                str(msg.get("creado", "")),
+                str(msg.get("creadoFormateado", "")),
+                str(msg.get("de", {}).get("nombreCompleto", "")),
+                str(msg.get("cuerpo", ""))[:120],
+            ]
+        )
+        digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()
+        return f"{conversation_key}:msg:hash:{digest}"
 
     # ------------------------------------------------------------------
     # Helpers internos
@@ -139,8 +256,8 @@ class AcadeuMonitor:
     # Telegram (tolerante a fallos)
     # ------------------------------------------------------------------
 
-    def send_telegram(self, notification: dict) -> bool:
-        """Envía una notificación por Telegram. Devuelve True si tuvo éxito."""
+    def send_telegram(self, notification: dict, reply_to_message_id: int | None = None) -> int | None:
+        """Envía una notificación por Telegram. Devuelve message_id si tuvo éxito."""
         texto = (
             f"*NUESTRA TIERRA* \n\n"
             f"*Título:* {notification['titulo']}\n"
@@ -149,17 +266,27 @@ class AcadeuMonitor:
             f"{notification['contenido']}"
         )
         url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+        payload = {
+            "chat_id": self.chat_id,
+            "text": texto,
+            "parse_mode": "Markdown",
+        }
+        if reply_to_message_id is not None:
+            payload["reply_to_message_id"] = reply_to_message_id
+            payload["allow_sending_without_reply"] = True
+
         try:
             resp = requests.post(
                 url,
-                json={"chat_id": self.chat_id, "text": texto, "parse_mode": "Markdown"},
+                json=payload,
                 timeout=10,
             )
             resp.raise_for_status()
-            return True
+            data = resp.json()
+            return data.get("result", {}).get("message_id")
         except Exception as e:
             log.warning("Error enviando a Telegram: %s", e)
-            return False
+            return None
 
     # ------------------------------------------------------------------
     # Procesamiento y persistencia (tolerante a fallos por mensaje)
@@ -176,14 +303,25 @@ class AcadeuMonitor:
 
         data = conversation.get("viewModel", {}).get("data", {})
         asunto = data.get("asunto", "(sin asunto)")
+        modo = self._conversation_mode(data)
+        is_debate = modo == "DEBATE"
+        conversation_key = self._conversation_key(data, asunto)
+        root_message_id = (
+            self._get_debate_root_message_id(conversation_key) if is_debate else None
+        )
         mensajes = data.get("mensajes", [])
         hoy = datetime.now()
         limite = hoy - timedelta(days=4)
 
         for msg in mensajes:
             try:
-                creado_str = msg.get("creado", "") 
-                creado_dt = datetime.fromisoformat(creado_str) if creado_str else None
+                message_key = self._message_key(conversation_key, msg)
+                if self._already_sent(message_key):
+                    continue
+
+                creado_str = msg.get("creado", "")
+                creado_norm = creado_str.replace("Z", "+00:00") if creado_str else ""
+                creado_dt = datetime.fromisoformat(creado_norm) if creado_norm else None
 
                 if creado_dt and creado_dt < limite:
                     continue
@@ -195,7 +333,16 @@ class AcadeuMonitor:
                     "contenido": self._strip_html(msg.get("cuerpo", "")),
                 }
 
-                self.send_telegram(notif)
+                if is_debate:
+                    sent_id = self.send_telegram(notif, reply_to_message_id=root_message_id)
+                    if sent_id and root_message_id is None:
+                        root_message_id = sent_id
+                        self._set_debate_root_message_id(conversation_key, root_message_id)
+                else:
+                    sent_id = self.send_telegram(notif)
+
+                if sent_id:
+                    self._mark_sent(message_key)
 
             except Exception as e:
                 log.warning("Error procesando mensaje id=%s, omitido: %s", msg.get("id"), e)

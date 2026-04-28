@@ -2,10 +2,19 @@ import paho.mqtt.client as mqtt
 import subprocess
 import dotenv
 import os
-
-print("Iniciando Worker MQTT...")
+import logging
+import sys
 
 dotenv.load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+log = logging.getLogger(__name__)
+
+log.info("Iniciando Worker MQTT...")
 
 MQTT_USER = os.getenv("MQTT_USER", "mqtt_user")
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "mqtt_password")
@@ -19,20 +28,20 @@ TOPICOS = {
 
 def on_connect(client, userdata, connect_flags, reason_code, properties):
     if reason_code == 0:
-        print("Conectado al broker MQTT")
+        log.info("Conectado al broker MQTT")
         for topico in TOPICOS.keys():
             client.subscribe(topico)
-            print(f"Suscripto a {topico}")
+            log.info("Suscripto a %s", topico)
     else:
-        print(f"Error de conexión, código: {reason_code}")
+        log.error("Error de conexión, código: %s", reason_code)
         client.disconnect()
 
 
 def on_message(client, userdata, msg):
-    print(f"Mensaje recibido en {msg.topic}: {msg.payload.decode()}")
+    log.info("Mensaje recibido en %s: %s", msg.topic, msg.payload.decode())
     script = TOPICOS.get(msg.topic)
     if script:
-        print(f"Ejecutando {script} por comando MQTT...")
+        log.info("Ejecutando %s por comando MQTT...", script)
         subprocess.Popen(["python3", script])
 
 
@@ -44,10 +53,10 @@ def main():
 
     try:
         client.connect(MQTT_BROKER, MQTT_PORT, 60)
-        print("Worker MQTT escuchando...")
+        log.info("Worker MQTT escuchando...")
         client.loop_forever()
     except Exception as e:
-        print(f"Error: {e}")
+        log.error("Error en worker MQTT: %s", e, exc_info=True)
 
 
 if __name__ == "__main__":
