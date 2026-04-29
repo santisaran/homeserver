@@ -5,7 +5,7 @@ app = Flask(__name__)
 
 SCRIPTS = {
     "etig":   "notificador_etig.py",
-    "acadeu": "notificador_acadeu_nuestra_tierra.py"
+    "acadeu": "acadeu_notificador.py"
 }
 
 

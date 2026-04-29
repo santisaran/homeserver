@@ -8,6 +8,8 @@ import logging
 import os
 import sys
 
+from telegram_client import TelegramClient
+
 load_dotenv()
 
 logging.basicConfig(
@@ -24,6 +26,7 @@ PASSWORD = os.getenv("ETIG_PASSWORD")
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 DB_PATH = "data/notificaciones.db"
+TELEGRAM_CLIENT = TelegramClient(TOKEN, CHAT_ID, log)
 
 
 def scraping_unlz():
@@ -50,17 +53,9 @@ def enviar_telegram(notificacion):
         f"*Fecha:* {notificacion['fecha']}\n\n"
         f"{notificacion['contenido']}"
     )
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": texto,
-        "parse_mode": "Markdown"
-    }
-    try:
-        response = requests.post(url, json=payload)
-        response.raise_for_status()
-    except Exception as e:
-        log.error("Error enviando a Telegram: %s", e, exc_info=True)
+    message_id = TELEGRAM_CLIENT.send_text(texto, parse_mode="Markdown")
+    if message_id is None:
+        log.error("Error enviando a Telegram desde ETIG")
 
 def procesar_y_notificar(html_content):
     # Inicializar DB y limpiar registros > 4 días
