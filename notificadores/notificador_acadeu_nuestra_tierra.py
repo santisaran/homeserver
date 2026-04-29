@@ -1,6 +1,9 @@
 import re
 import html
 import requests
+import mimetypes
+import argparse
+import json
 import logging
 import sqlite3
 import hashlib
@@ -176,6 +179,19 @@ class AcadeuMonitor:
         text = re.sub(r"\s{2,}", " ", text).strip()
         return text
 
+    @staticmethod
+    def _extract_image_urls(html_content: str) -> list[str]:
+        """Extrae URLs de imágenes desde etiquetas <img src="...">."""
+        if not html_content:
+            return []
+
+        matches = re.findall(
+            r'<img[^>]+src=["\']([^"\']+)["\']',
+            html_content,
+            flags=re.IGNORECASE,
+        )
+        return [html.unescape(url) for url in matches if url]
+
     # ------------------------------------------------------------------
     # Sesión (crítico: si falla, no tiene sentido continuar)
     # ------------------------------------------------------------------
@@ -252,6 +268,78 @@ class AcadeuMonitor:
 
         return messages
 
+    def get_messages_by_conversation_ids(self, conversation_ids: list[str]) -> list[dict]:
+        """
+        Recupera conversaciones específicas por ID vía POST /conversaciones/{id}.
+        Si alguna falla, continúa con las demás.
+        """
+        messages = []
+        for conv_id in conversation_ids:
+            conv_id = str(conv_id).strip()
+            if not conv_id:
+                continue
+
+            resp = self._safe_request(
+                "POST",
+                f"{self.NT_BASE_URL}/conversaciones/{conv_id}",
+                headers={
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                },
+            )
+            if resp is None:
+                continue
+
+            try:
+                conversation = resp.json()
+                message_count = len(
+                    conversation.get("viewModel", {}).get("data", {}).get("mensajes", [])
+                )
+                log.info(
+                    "Conversación %s obtenida: estado=%s mensajes=%s",
+                    conv_id,
+                    conversation.get("estado"),
+                    message_count,
+                )
+                messages.append(conversation)
+            except ValueError as e:
+                log.warning("Respuesta de conversación %s no es JSON válido: %s", conv_id, e)
+
+        return messages
+
+    @staticmethod
+    def _telegram_message_id_from_response(resp: requests.Response, action: str) -> int | None:
+        try:
+            data = resp.json()
+        except ValueError:
+            log.warning(
+                "Telegram devolvió una respuesta no JSON para %s: %s",
+                action,
+                resp.text[:500],
+            )
+            return None
+
+        if not isinstance(data, dict):
+            log.warning("Telegram devolvió una respuesta inesperada para %s: %s", action, data)
+            return None
+
+        if not data.get("ok", False):
+            log.warning(
+                "Telegram rechazó %s: error_code=%s description=%s",
+                action,
+                data.get("error_code"),
+                data.get("description"),
+            )
+            return None
+
+        message_id = data.get("result", {}).get("message_id")
+        if message_id is None:
+            log.warning("Telegram respondió ok para %s pero sin message_id: %s", action, data)
+            return None
+
+        log.info("Telegram %s enviado correctamente: message_id=%s", action, message_id)
+        return message_id
+
     # ------------------------------------------------------------------
     # Telegram (tolerante a fallos)
     # ------------------------------------------------------------------
@@ -282,17 +370,69 @@ class AcadeuMonitor:
                 timeout=10,
             )
             resp.raise_for_status()
-            data = resp.json()
-            return data.get("result", {}).get("message_id")
+            return self._telegram_message_id_from_response(resp, "sendMessage")
         except Exception as e:
             log.warning("Error enviando a Telegram: %s", e)
+            return None
+
+    def send_telegram_photo(
+        self,
+        notification: dict,
+        image_url: str,
+        reply_to_message_id: int | None = None,
+    ) -> int | None:
+        """Descarga una imagen y la envía a Telegram como foto."""
+        if self.session is None:
+            log.warning("No hay sesión activa para descargar imágenes.")
+            return None
+
+        caption = (
+            f"NUESTRA TIERRA\n\n"
+            f"Título: {notification['titulo']}\n"
+            f"De: {notification['emisor']}\n"
+            f"Fecha: {notification['fecha']}"
+        )
+        caption = caption[:1024]
+
+        try:
+            log.info("Descargando imagen de Acadeu: %s", image_url)
+            img_resp = self.session.get(image_url, timeout=20)
+            img_resp.raise_for_status()
+
+            content_type = img_resp.headers.get("Content-Type", "")
+            ext = mimetypes.guess_extension(content_type.split(";")[0].strip()) or ".jpg"
+            filename = f"nuestra_tierra{ext}"
+
+            url = f"https://api.telegram.org/bot{self.token}/sendPhoto"
+            data = {
+                "chat_id": self.chat_id,
+                "caption": caption,
+            }
+            if reply_to_message_id is not None:
+                data["reply_to_message_id"] = reply_to_message_id
+                data["allow_sending_without_reply"] = True
+
+            files = {
+                "photo": (filename, img_resp.content, content_type or "application/octet-stream")
+            }
+
+            resp = requests.post(url, data=data, files=files, timeout=20)
+            resp.raise_for_status()
+            return self._telegram_message_id_from_response(resp, "sendPhoto")
+        except Exception as e:
+            log.warning("Error enviando imagen a Telegram (%s): %s", image_url, e)
             return None
 
     # ------------------------------------------------------------------
     # Procesamiento y persistencia (tolerante a fallos por mensaje)
     # ------------------------------------------------------------------
 
-    def process_and_notify(self, conversation: dict):
+    def process_and_notify(
+        self,
+        conversation: dict,
+        ignore_date_limit: bool = False,
+        ignore_already_sent: bool = False,
+    ):
         """
         Recibe el JSON de una conversación, extrae cada mensaje nuevo
         y lo envía por Telegram. Errores individuales no interrumpen el resto.
@@ -312,61 +452,183 @@ class AcadeuMonitor:
         mensajes = data.get("mensajes", [])
         hoy = datetime.now()
         limite = hoy - timedelta(days=4)
+        log.info(
+            "Procesando conversación %s asunto=%r modo=%s mensajes=%s ignore_date_limit=%s",
+            conversation_key,
+            asunto,
+            modo or "(sin modo)",
+            len(mensajes),
+            ignore_date_limit,
+        )
 
         for msg in mensajes:
             try:
+                msg_id = msg.get("id")
                 message_key = self._message_key(conversation_key, msg)
-                if self._already_sent(message_key):
+                if not ignore_already_sent and self._already_sent(message_key):
+                    log.info("Mensaje %s omitido: ya fue enviado antes (%s)", msg_id, message_key)
                     continue
 
                 creado_str = msg.get("creado", "")
                 creado_norm = creado_str.replace("Z", "+00:00") if creado_str else ""
                 creado_dt = datetime.fromisoformat(creado_norm) if creado_norm else None
 
-                if creado_dt and creado_dt < limite:
+                if not ignore_date_limit and creado_dt and creado_dt < limite:
+                    log.info("Mensaje %s omitido por fecha: %s < %s", msg_id, creado_dt, limite)
                     continue
+
+                raw_body = msg.get("cuerpo", "")
+                contenido = self._strip_html(raw_body)
+                image_urls = self._extract_image_urls(raw_body)
 
                 notif = {
                     "titulo": asunto,
                     "emisor": msg.get("de", {}).get("nombreCompleto", "Desconocido"),
                     "fecha": msg.get("creadoFormateado", creado_str),
-                    "contenido": self._strip_html(msg.get("cuerpo", "")),
+                    "contenido": contenido,
                 }
 
+                is_image_only = not contenido and bool(image_urls)
+                log.info(
+                    "Mensaje %s listo para enviar: texto=%s imagenes=%s image_only=%s",
+                    msg_id,
+                    bool(contenido),
+                    len(image_urls),
+                    is_image_only,
+                )
+
                 if is_debate:
-                    sent_id = self.send_telegram(notif, reply_to_message_id=root_message_id)
+                    if is_image_only:
+                        sent_id = self.send_telegram_photo(
+                            notif,
+                            image_urls[0],
+                            reply_to_message_id=root_message_id,
+                        )
+                    else:
+                        sent_id = self.send_telegram(notif, reply_to_message_id=root_message_id)
+
+                    if sent_id is None and image_urls:
+                        log.info("Mensaje %s: fallback a sendMessage con URL de imagen", msg_id)
+                        notif["contenido"] = f"Imagen: {image_urls[0]}"
+                        sent_id = self.send_telegram(notif, reply_to_message_id=root_message_id)
+
                     if sent_id and root_message_id is None:
                         root_message_id = sent_id
                         self._set_debate_root_message_id(conversation_key, root_message_id)
                 else:
-                    sent_id = self.send_telegram(notif)
+                    if is_image_only:
+                        sent_id = self.send_telegram_photo(notif, image_urls[0])
+                    else:
+                        sent_id = self.send_telegram(notif)
+
+                    if sent_id is None and image_urls:
+                        log.info("Mensaje %s: fallback a sendMessage con URL de imagen", msg_id)
+                        notif["contenido"] = f"Imagen: {image_urls[0]}"
+                        sent_id = self.send_telegram(notif)
 
                 if sent_id:
                     self._mark_sent(message_key)
+                    log.info("Mensaje %s marcado como enviado (%s)", msg_id, message_key)
+                else:
+                    log.warning("Mensaje %s no pudo enviarse a Telegram", msg_id)
 
             except Exception as e:
                 log.warning("Error procesando mensaje id=%s, omitido: %s", msg.get("id"), e)
 
     # ------------------------------------------------------------------
-    # Punto de entrada
+    # Punto de entrada 
     # ------------------------------------------------------------------
 
-    def run(self):
+    def run(self, conversation_ids: list[str] | None = None):
         if not self.login():
             log.error("Login fallido. Abortando ejecución.")
             return
 
-        notifications = self.get_unread()
-        if notifications is None:
-            log.warning("No se pudieron obtener notificaciones sin leer.")
-            return
+        if conversation_ids:
+            log.info("Modo manual: procesando conversaciones explícitas: %s", ", ".join(conversation_ids))
+            messages = self.get_messages_by_conversation_ids(conversation_ids)
+            for msg in messages:
+                self.process_and_notify(
+                    msg,
+                    ignore_date_limit=True,
+                    ignore_already_sent=True,
+                )
+        else:
+            notifications = self.get_unread()
+            if notifications is None:
+                log.warning("No se pudieron obtener notificaciones sin leer.")
+                return
 
-        messages = self.get_messages(notifications)
-        for msg in messages:
-            self.process_and_notify(msg)
+            messages = self.get_messages(notifications)
+            for msg in messages:
+                self.process_and_notify(msg)
 
         log.info("Check finalizado: %s", datetime.now())
 
 
+def _parse_conversation_ids(argv: list[str]) -> list[str]:
+    parser = argparse.ArgumentParser(
+        description="Notificador de mensajes de Nuestra Tierra",
+    )
+    parser.add_argument(
+        "conversation_ids",
+        nargs="*",
+        help="Uno o más IDs de conversación. También admite valores separados por coma.",
+    )
+    args = parser.parse_args(argv)
+
+    normalized: list[str] = []
+    for value in args.conversation_ids:
+        parts = [p.strip() for p in str(value).split(",") if p.strip()]
+        normalized.extend(parts)
+
+    return normalized
+
+
+def _extract_conversation_ids_from_payload(payload_text: str) -> list[str]:
+    if not payload_text or not payload_text.strip():
+        return []
+
+    raw = payload_text.strip()
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        parts = [p.strip() for p in raw.split(",") if p.strip()]
+        return parts or [raw]
+
+    if isinstance(payload, list):
+        return [str(item).strip() for item in payload if str(item).strip()]
+
+    if not isinstance(payload, dict):
+        value = str(payload).strip()
+        return [value] if value else []
+
+    raw_ids = payload.get("message_ids")
+    if raw_ids is None:
+        raw_ids = payload.get("message_id")
+    if raw_ids is None:
+        raw_ids = payload.get("conversation_ids")
+    if raw_ids is None:
+        raw_ids = payload.get("conversation_id")
+
+    if isinstance(raw_ids, list):
+        return [str(item).strip() for item in raw_ids if str(item).strip()]
+    if raw_ids not in (None, ""):
+        value = str(raw_ids).strip()
+        return [value] if value else []
+
+    return []
+
+
+def _get_requested_conversation_ids(argv: list[str]) -> list[str]:
+    cli_ids = _parse_conversation_ids(argv)
+    if cli_ids:
+        return cli_ids
+
+    mqtt_payload = os.getenv("MQTT_PAYLOAD", "")
+    return _extract_conversation_ids_from_payload(mqtt_payload)
+
+
 if __name__ == "__main__":
-    AcadeuMonitor().run()
+    ids = _get_requested_conversation_ids(sys.argv[1:])
+    AcadeuMonitor().run(conversation_ids=ids)

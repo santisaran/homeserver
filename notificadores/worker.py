@@ -38,11 +38,15 @@ def on_connect(client, userdata, connect_flags, reason_code, properties):
 
 
 def on_message(client, userdata, msg):
-    log.info("Mensaje recibido en %s: %s", msg.topic, msg.payload.decode())
+    payload_text = msg.payload.decode(errors="replace")
+    log.info("Mensaje recibido en %s: %s", msg.topic, payload_text)
     script = TOPICOS.get(msg.topic)
     if script:
-        log.info("Ejecutando %s por comando MQTT...", script)
-        subprocess.Popen(["python3", script])
+        log.info("Ejecutando %s con payload MQTT reenviado al entorno del proceso.", script)
+        env = os.environ.copy()
+        env["MQTT_PAYLOAD"] = payload_text
+        env["MQTT_TOPIC"] = msg.topic
+        subprocess.Popen(["python3", script], env=env)
 
 
 def main():

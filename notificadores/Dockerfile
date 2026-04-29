@@ -1,13 +1,20 @@
-FROM python:3.14-alpine
+FROM python:3.14-alpine AS builder
 
-# Instalamos dependencias de sistema necesarias para compilación de algunos paquetes de Python si fuera necesario
+# Dependencias de compilación solo para construir wheels/paquetes.
 RUN apk add --no-cache gcc musl-dev libffi-dev
+
+WORKDIR /build
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+
+FROM python:3.14-alpine AS runtime
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
+# Solo artefactos de Python ya instalados desde el stage de build.
+COPY --from=builder /install /usr/local
 COPY . .
 
 CMD ["python", "worker.py"]
