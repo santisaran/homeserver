@@ -390,6 +390,10 @@ class AcadeuMonitor:
         adj_ok = self._send_adjuntos_to_telegram(adjunto_urls, skip=adjuntos_solo_texto)
 
         return sent_id, adj_ok
+    
+    def _is_own_message(self, msg: dict) -> bool:
+        de = msg.get("de", {})
+        return de.get("esUsuarioActual", False)
 
     def process_and_notify(
         self,
@@ -397,6 +401,7 @@ class AcadeuMonitor:
         ignore_date_limit: bool = False,
         ignore_already_sent: bool = False,
         immich_options: dict | None = None,
+        ignore_own_messages: bool = True,
     ) -> bool:
         """
         Recibe el JSON de una conversación, extrae cada mensaje nuevo
@@ -440,6 +445,10 @@ class AcadeuMonitor:
 
                 if not ignore_date_limit and creado_dt and creado_dt < limite:
                     log.info("Mensaje %s omitido por fecha: %s < %s", msg_id, creado_dt, limite)
+                    continue
+
+                if ignore_own_messages and self._is_own_message(msg):
+                    log.info("Mensaje %s omitido: mensaje propio", msg_id)
                     continue
 
                 notif, image_urls, adjunto_urls, is_image_only, adjuntos_solo_texto = self._build_notification(msg, asunto, creado_str)
