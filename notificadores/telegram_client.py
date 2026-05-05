@@ -1,3 +1,4 @@
+import html
 import logging
 import mimetypes
 
@@ -59,15 +60,15 @@ class TelegramClient:
         reply_markup: dict | None = None,
     ) -> int | None:
         texto = (
-            f"*{header}* \n\n"
-            f"*Título:* {notification['titulo']}\n"
-            f"*De:* {notification['emisor']}\n"
-            f"*Fecha:* {notification['fecha']}\n\n"
+            f"<b>{header}</b>\n\n"
+            f"<b>Título:</b> {html.escape(notification['titulo'])}\n"
+            f"<b>De:</b> {html.escape(notification['emisor'])}\n"
+            f"<b>Fecha:</b> {html.escape(notification['fecha'])}\n\n"
             f"{notification['contenido']}"
         )
         return self.send_text(
             texto,
-            parse_mode="Markdown",
+            parse_mode="HTML",
             reply_to_message_id=reply_to_message_id,
             reply_markup=reply_markup,
         )
@@ -75,7 +76,7 @@ class TelegramClient:
     def send_text(
         self,
         text: str,
-        parse_mode: str = "Markdown",
+        parse_mode: str = "HTML",
         reply_to_message_id: int | None = None,
         reply_markup: dict | None = None,
     ) -> int | None:

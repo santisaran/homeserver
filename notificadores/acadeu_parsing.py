@@ -51,10 +51,23 @@ def message_key(conversation_key_value: str, msg: dict) -> str:
 
 
 def strip_html(html_content: str) -> str:
-    text = re.sub(r"<[^>]+>", " ", html_content)
+    # Basic conversion of some tags to Telegram HTML supported tags
+    text = html_content
+    # Replace common block elements with newlines first
+    text = re.sub(r"<(p|div|br\s*/?|h[1-6])[^>]*>", "\n", text, flags=re.IGNORECASE)
+    # Remove all other tags
+    text = re.sub(r"<[^>]+>", "", text)
+    # Unescape HTML entities
     text = html.unescape(text)
+    # Handle non-breaking spaces
     text = text.replace("\xa0", " ")
-    text = re.sub(r"\s{2,}", " ", text).strip()
+    # Normalize whitespaces but keep some newlines
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n\s*\n+", "\n\n", text)
+    text = text.strip()
+
+    # Escape for Telegram HTML
+    text = html.escape(text)
     return text
 
 
