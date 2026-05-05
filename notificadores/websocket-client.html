@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notificadores WebSocket</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            padding: 30px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding: 12px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #999;
+            transition: background 0.3s;
+        }
+        .status-indicator.connected {
+            background: #4caf50;
+        }
+        .status-indicator.connecting {
+            background: #ff9800;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .events {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+        .event {
+            padding: 12px;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 13px;
+            font-family: 'Courier New', monospace;
+            word-break: break-word;
+        }
+        .event:last-child {
+            border-bottom: none;
+        }
+        .event.telegram_callback {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+        .event.pong {
+            background: #f1f8e9;
+            border-left: 4px solid #8bc34a;
+        }
+        .event.subscribed {
+            background: #fce4ec;
+            border-left: 4px solid #e91e63;
+        }
+        .timestamp {
+            color: #999;
+            font-size: 11px;
+            display: block;
+            margin-bottom: 4px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .endpoint {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #d0d0d0;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-top: 12px;
+        }
+        .command-panel {
+            margin-top: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .command-panel-inputs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .command-panel input {
+            padding: 10px;
+            border: 1px solid #d0d0d0;
+            border-radius: 6px;
+            font-size: 14px;
+            min-width: 0;
+        }
+        .btn-send {
+            background: #009688;
+            color: white;
+            width: 100%;
+        }
+        .btn-send:hover {
+            background: #00796b;
+        }
+        .btn-send-telegram {
+            background: #1976d2;
+            color: white;
+            width: 100%;
+        }
+        .btn-send-telegram:hover {
+            background: #125ea7;
+        }
+        button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+        .btn-connect {
+            background: #667eea;
+            color: white;
+        }
+        .btn-connect:hover {
+            background: #5568d3;
+        }
+        .btn-connect:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .btn-clear {
+            background: #f44336;
+            color: white;
+        }
+        .btn-clear:hover {
+            background: #da190b;
+        }
+        .info {
+            background: #e8f4f8;
+            border-left: 4px solid #00bcd4;
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            margin-top: 20px;
+            color: #00695c;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔔 Notificadores WebSocket</h1>
+        
+        <div class="status">
+            <div class="status-indicator" id="statusIndicator"></div>
+            <span id="statusText">Desconectado</span>
+        </div>
+        
+        <div class="events" id="events"></div>
+
+        <input
+            id="wsUrl"
+            class="endpoint"
+            type="text"
+            placeholder="wss://notif.terispi.duckdns.org"
+        />
+
+        <div class="command-panel">
+            <div class="command-panel-inputs">
+                <input id="messageId" type="text" placeholder="message_id (acadeu)" />
+                <input id="albumName" type="text" placeholder="album_name" />
+            </div>
+            <button class="btn-send-telegram" onclick="sendTelegramByMessageId()">Enviar a Telegram (solo ID)</button>
+            <button class="btn-send" onclick="sendImmich()">Enviar a Immich</button>
+        </div>
+        
+        <div class="controls">
+            <button class="btn-connect" id="connectBtn" onclick="toggleConnection()">Conectar</button>
+            <button class="btn-clear" onclick="clearEvents()">Limpiar</button>
+        </div>
+        
+        <div class="info">
+            📡 Los eventos de Telegram y cambios del worker aparecerán aquí en tiempo real.
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+
+        function resolveDefaultServerUrl() {
+            if (window.location.host) {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                return `${protocol}//${window.location.host}`;
+            }
+            return localStorage.getItem('ws_url') || 'wss://notif.terispi.duckdns.org';
+        }
+
+        function getServerUrl() {
+            const input = document.getElementById('wsUrl');
+            const value = (input.value || '').trim();
+            if (!value) {
+                return resolveDefaultServerUrl();
+            }
+            return value;
+        }
+
+        function updateStatus(status) {
+            const indicator = document.getElementById('statusIndicator');
+            const text = document.getElementById('statusText');
+            const btn = document.getElementById('connectBtn');
+
+            indicator.className = 'status-indicator ' + status;
+            btn.disabled = status === 'connecting';
+            btn.textContent = status === 'connected' ? 'Desconectar' : 'Conectar';
+
+            switch(status) {
+                case 'connected':
+                    text.textContent = '✓ Conectado';
+                    break;
+                case 'connecting':
+                    text.textContent = '⟳ Conectando...';
+                    break;
+                case 'disconnected':
+                default:
+                    text.textContent = '✗ Desconectado';
+            }
+        }
+
+        function addEvent(event) {
+            const eventsDiv = document.getElementById('events');
+            const eventEl = document.createElement('div');
+            eventEl.className = 'event ' + (event.type || 'unknown');
+            eventEl.innerHTML = `
+                <span class="timestamp">${new Date().toLocaleTimeString()}</span>
+                <strong>${event.type || 'unknown'}:</strong> ${JSON.stringify(event.data || event, null, 2)}
+            `;
+            eventsDiv.insertBefore(eventEl, eventsDiv.firstChild);
+
+            // Mantener solo últimos 50 eventos
+            while (eventsDiv.children.length > 50) {
+                eventsDiv.removeChild(eventsDiv.lastChild);
+            }
+        }
+
+        function clearEvents() {
+            document.getElementById('events').innerHTML = '';
+        }
+
+        function connect() {
+            updateStatus('connecting');
+            const serverUrl = getServerUrl();
+            if (!/^wss?:\/\//i.test(serverUrl)) {
+                updateStatus('disconnected');
+                addEvent({ type: 'error', data: { message: 'URL inválida. Debe comenzar con ws:// o wss://', url: serverUrl } });
+                return;
+            }
+
+            localStorage.setItem('ws_url', serverUrl);
+            ws = new WebSocket(serverUrl);
+
+            ws.onopen = () => {
+                updateStatus('connected');
+                addEvent({ type: 'info', data: { message: 'Conexión establecida', url: serverUrl }});
+                
+                // Enviar comando de suscripción
+                ws.send(JSON.stringify({
+                    command: 'subscribe',
+                    data: {}
+                }));
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    addEvent(data);
+                } catch (e) {
+                    console.error('Error parsing message:', e);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                addEvent({
+                    type: 'error',
+                    data: {
+                        message: 'Error en la conexión WebSocket',
+                        url: serverUrl,
+                        readyState: ws ? ws.readyState : null
+                    }
+                });
+            };
+
+            ws.onclose = (event) => {
+                updateStatus('disconnected');
+                addEvent({
+                    type: 'info',
+                    data: {
+                        message: 'Conexión cerrada',
+                        url: serverUrl,
+                        code: event.code,
+                        reason: event.reason,
+                        wasClean: event.wasClean
+                    }
+                });
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function toggleConnection() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                disconnect();
+                updateStatus('disconnected');
+            } else {
+                connect();
+            }
+        }
+
+        function sendImmich() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                addEvent({ type: 'error', data: { message: 'Conectate primero al WebSocket' } });
+                return;
+            }
+
+            const messageId = (document.getElementById('messageId').value || '').trim();
+            const albumName = (document.getElementById('albumName').value || '').trim();
+
+            if (!messageId) {
+                addEvent({ type: 'error', data: { message: 'Falta message_id' } });
+                return;
+            }
+
+            ws.send(JSON.stringify({
+                command: 'save_immich',
+                data: {
+                    message_id: messageId,
+                    album_name: albumName,
+                }
+            }));
+
+            addEvent({ type: 'info', data: { message: 'Comando enviado', message_id: messageId, album_name: albumName } });
+        }
+
+        function sendTelegramByMessageId() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                addEvent({ type: 'error', data: { message: 'Conectate primero al WebSocket' } });
+                return;
+            }
+
+            const messageId = (document.getElementById('messageId').value || '').trim();
+            if (!messageId) {
+                addEvent({ type: 'error', data: { message: 'Falta message_id' } });
+                return;
+            }
+
+            ws.send(JSON.stringify({
+                command: 'send_telegram',
+                data: {
+                    message_id: messageId,
+                }
+            }));
+
+            addEvent({ type: 'info', data: { message: 'Solicitud de envio a Telegram enviada', message_id: messageId } });
+        }
+
+        // Inicializar estado
+        document.getElementById('wsUrl').value = resolveDefaultServerUrl();
+        updateStatus('disconnected');
+    </script>
+</body>
+</html>

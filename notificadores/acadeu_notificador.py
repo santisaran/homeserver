@@ -39,6 +39,8 @@ class AcadeuMonitor:
         self.store = AcadeuStore(self.db_path)
         self.acadeu_client = AcadeuClient(self.username, self.password, log)
         self.telegram_client = TelegramClient(self.token, self.chat_id, log)
+        self.retry_base_minutes = int(os.getenv("RETRY_BASE_MINUTES", "5"))
+        self.retry_max_minutes = int(os.getenv("RETRY_MAX_MINUTES", "360"))
         immich_url = os.getenv("IMMICH_URL")
         immich_api_key = os.getenv("IMMICH_API_KEY")
         self.immich_client: ImmichClient | None = (
@@ -58,6 +60,26 @@ class AcadeuMonitor:
 
     def _set_debate_root_message_id(self, conversation_key: str, root_message_id: int):
         self.store.set_debate_root_message_id(conversation_key, root_message_id)
+
+    def _retry_delay_minutes(self, attempts_so_far: int) -> int:
+        # Backoff exponencial: 5, 10, 20, 40, ... hasta un máximo configurable.
+        delay = self.retry_base_minutes * (2 ** min(attempts_so_far, 6))
+        return max(1, min(self.retry_max_minutes, delay))
+
+    def _schedule_retry(self, conv_id: str, reason: str):
+        attempts = self.store.get_retry_attempts(conv_id)
+        delay = self._retry_delay_minutes(attempts)
+        self.store.schedule_retry(conv_id, error=reason, delay_minutes=delay)
+        log.warning(
+            "Reintento programado para conv:%s en %s min (intentos previos=%s). Motivo: %s",
+            conv_id,
+            delay,
+            attempts,
+            reason,
+        )
+
+    def _clear_retry(self, conv_id: str):
+        self.store.clear_retry(conv_id)
 
     @staticmethod
     def _pick_first_nonempty(data: dict, keys: list[str], default: str = "") -> str:
@@ -229,28 +251,34 @@ class AcadeuMonitor:
         adjunto_urls: list[tuple[str, str]],
         reply_to_message_id: int | None = None,
         skip: bool = False,
-    ):
+    ) -> bool:
         """Descarga y envía cada adjunto a Telegram como foto o documento.
         Si skip=True no hace nada (el resumen ya fue incluido en el texto).
         """
         if skip:
-            return
+            return True
+        all_sent = True
         for url, filename in adjunto_urls:
             downloaded = self.acadeu_client.download_image(url)
             if downloaded is None:
                 log.warning("No se pudo descargar adjunto: %s", filename)
+                all_sent = False
                 continue
             file_content, content_type = downloaded
             # Inferir content_type desde el nombre si la respuesta no lo indica
             if not content_type:
                 import mimetypes as _mt
                 content_type = _mt.guess_type(filename)[0] or "application/octet-stream"
-            self.telegram_client.send_file(
+            sent = self.telegram_client.send_file(
                 file_content,
                 filename,
                 content_type,
                 reply_to_message_id=reply_to_message_id,
             )
+            if sent is None:
+                all_sent = False
+
+        return all_sent
 
     def _send_debate_message(
         self,
@@ -263,16 +291,19 @@ class AcadeuMonitor:
         immich_options: dict | None = None,
         conv_id: str | None = None,
         adjuntos_solo_texto: bool = False,
-    ) -> tuple[int | None, int | None]:
+    ) -> tuple[int | None, int | None, bool]:
         send_to_immich = bool(immich_options and immich_options.get("immich"))
 
         if send_to_immich:
             sent_id = None
             album_name = immich_options.get("album_name")
+            all_ok = True
             for url in image_urls:
-                self._send_image_to_immich(url, album_name)
+                if self._send_image_to_immich(url, album_name) is None:
+                    all_ok = False
             for url, filename in adjunto_urls:
-                self._send_image_to_immich(url, album_name, filename=filename)
+                if self._send_image_to_immich(url, album_name, filename=filename) is None:
+                    all_ok = False
         else:
             # Adjuntar botón solo en el mensaje raíz y cuando hay imágenes
             reply_markup = None
@@ -302,15 +333,18 @@ class AcadeuMonitor:
                     reply_markup=reply_markup,
                 )
 
-            self._send_adjuntos_to_telegram(
-                adjunto_urls,
-                reply_to_message_id=root_message_id,
-                skip=adjuntos_solo_texto,
-            )
+            if sent_id is None:
+                all_ok = False
+            else:
+                all_ok = self._send_adjuntos_to_telegram(
+                    adjunto_urls,
+                    reply_to_message_id=root_message_id,
+                    skip=adjuntos_solo_texto,
+                )
 
         if sent_id and root_message_id is None:
             root_message_id = sent_id
-        return sent_id, root_message_id
+        return sent_id, root_message_id, all_ok
 
     def _send_direct_message(
         self,
@@ -322,16 +356,19 @@ class AcadeuMonitor:
         immich_options: dict | None = None,
         conv_id: str | None = None,
         adjuntos_solo_texto: bool = False,
-    ) -> int | None:
+    ) -> tuple[int | None, bool]:
         send_to_immich = bool(immich_options and immich_options.get("immich"))
 
         if send_to_immich:
             album_name = immich_options.get("album_name")
+            all_ok = True
             for url in image_urls:
-                self._send_image_to_immich(url, album_name)
+                if self._send_image_to_immich(url, album_name) is None:
+                    all_ok = False
             for url, filename in adjunto_urls:
-                self._send_image_to_immich(url, album_name, filename=filename)
-            return None
+                if self._send_image_to_immich(url, album_name, filename=filename) is None:
+                    all_ok = False
+            return None, all_ok
 
         reply_markup = None
         if conv_id and (image_urls or adjunto_urls):
@@ -347,9 +384,12 @@ class AcadeuMonitor:
             notif["contenido"] = f"Imagen: {image_urls[0]}"
             sent_id = self.send_telegram(notif, reply_markup=reply_markup)
 
-        self._send_adjuntos_to_telegram(adjunto_urls, skip=adjuntos_solo_texto)
+        if sent_id is None:
+            return None, False
 
-        return sent_id
+        adj_ok = self._send_adjuntos_to_telegram(adjunto_urls, skip=adjuntos_solo_texto)
+
+        return sent_id, adj_ok
 
     def process_and_notify(
         self,
@@ -357,14 +397,14 @@ class AcadeuMonitor:
         ignore_date_limit: bool = False,
         ignore_already_sent: bool = False,
         immich_options: dict | None = None,
-    ):
+    ) -> bool:
         """
         Recibe el JSON de una conversación, extrae cada mensaje nuevo
         y lo envía por Telegram. Errores individuales no interrumpen el resto.
         """
         if not conversation or conversation.get("estado") != "ok":
             log.warning("Conversación con estado inesperado, omitida.")
-            return
+            return True
 
         data = conversation.get("viewModel", {}).get("data", {})
         asunto = data.get("asunto", "(sin asunto)")
@@ -386,6 +426,7 @@ class AcadeuMonitor:
             len(mensajes),
             ignore_date_limit,
         )
+        had_failures = False
 
         for msg in mensajes:
             try:
@@ -412,7 +453,7 @@ class AcadeuMonitor:
                 )
 
                 if is_debate:
-                    sent_id, new_root_id = self._send_debate_message(
+                    sent_id, new_root_id, sent_ok = self._send_debate_message(
                         notif,
                         is_image_only,
                         image_urls,
@@ -427,7 +468,7 @@ class AcadeuMonitor:
                         root_message_id = new_root_id
                         self._set_debate_root_message_id(conversation_key, root_message_id)
                 else:
-                    sent_id = self._send_direct_message(
+                    sent_id, sent_ok = self._send_direct_message(
                         notif,
                         is_image_only,
                         image_urls,
@@ -439,16 +480,54 @@ class AcadeuMonitor:
                     )
 
                 send_to_immich = bool(immich_options and immich_options.get("immich"))
-                if sent_id:
+                if sent_ok:
                     self._mark_sent(message_key)
                     log.info("Mensaje %s marcado como enviado (%s)", msg_id, message_key)
+                    if conv_id:
+                        self._clear_retry(conv_id)
                 elif send_to_immich:
-                    log.info("Mensaje %s procesado en modo Immich (sin envío a Telegram)", msg_id)
+                    had_failures = True
+                    log.warning("Mensaje %s no pudo procesarse completamente en modo Immich", msg_id)
                 else:
+                    had_failures = True
                     log.warning("Mensaje %s no pudo enviarse a Telegram", msg_id)
 
             except Exception as e:
+                had_failures = True
                 log.warning("Error procesando mensaje id=%s, omitido: %s", msg.get("id"), e)
+
+        return had_failures
+
+    def _process_due_retries(self, immich_options: dict | None = None):
+        due_ids = self.store.get_due_retries(limit=20)
+        if not due_ids:
+            return
+
+        log.info("Hay %s conversaciones en cola de reintento: %s", len(due_ids), ", ".join(due_ids))
+        conversations = self.get_messages_by_conversation_ids(due_ids)
+        received_ids: set[str] = set()
+
+        for conv in conversations:
+            data = conv.get("viewModel", {}).get("data", {})
+            conv_id = self._pick_first_nonempty(data, ["id", "idConversacion", "conversacionId", "uuid", "codigo"])
+            if conv_id:
+                received_ids.add(conv_id)
+
+            had_failures = self.process_and_notify(
+                conv,
+                ignore_date_limit=True,
+                ignore_already_sent=False,
+                immich_options=immich_options,
+            )
+
+            if conv_id and had_failures:
+                self._schedule_retry(conv_id, "Persisten fallas de envío")
+            elif conv_id:
+                self._clear_retry(conv_id)
+
+        for missing in due_ids:
+            if missing not in received_ids:
+                self._schedule_retry(missing, "No se pudo obtener la conversación para reintento")
 
     # ------------------------------------------------------------------
     # Punto de entrada 
@@ -459,16 +538,23 @@ class AcadeuMonitor:
             log.error("Login fallido. Abortando ejecución.")
             return
 
+        self._process_due_retries(immich_options=immich_options)
+
         if conversation_ids:
             log.info("Modo manual: procesando conversaciones explícitas: %s", ", ".join(conversation_ids))
             messages = self.get_messages_by_conversation_ids(conversation_ids)
             for msg in messages:
-                self.process_and_notify(
+                had_failures = self.process_and_notify(
                     msg,
                     ignore_date_limit=True,
                     ignore_already_sent=True,
                     immich_options=immich_options,
                 )
+                if had_failures:
+                    data = msg.get("viewModel", {}).get("data", {})
+                    conv_id = self._pick_first_nonempty(data, ["id", "idConversacion", "conversacionId", "uuid", "codigo"])
+                    if conv_id:
+                        self._schedule_retry(conv_id, "Falló procesamiento manual de conversación")
         else:
             notifications = self.get_unread()
             if notifications is None:
@@ -477,7 +563,12 @@ class AcadeuMonitor:
 
             messages = self.get_messages(notifications)
             for msg in messages:
-                self.process_and_notify(msg)
+                had_failures = self.process_and_notify(msg)
+                if had_failures:
+                    data = msg.get("viewModel", {}).get("data", {})
+                    conv_id = self._pick_first_nonempty(data, ["id", "idConversacion", "conversacionId", "uuid", "codigo"])
+                    if conv_id:
+                        self._schedule_retry(conv_id, "Falló envío de al menos un mensaje")
 
         log.info("Check finalizado: %s", datetime.now())
 

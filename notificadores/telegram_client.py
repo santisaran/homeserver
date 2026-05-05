@@ -246,3 +246,41 @@ class TelegramClient:
             requests.post(url, json=payload, timeout=10)
         except Exception as e:
             self.log.warning("Error en answerCallbackQuery: %s", e)
+
+    def set_webhook(self, webhook_url: str, secret: str = "") -> bool:
+        """Registra el webhook en la API de Telegram."""
+        url = f"https://api.telegram.org/bot{self.token}/setWebhook"
+        payload: dict = {
+            "url": webhook_url,
+            "allowed_updates": ["callback_query"],
+        }
+        if secret:
+            payload["secret_token"] = secret
+        try:
+            resp = requests.post(url, json=payload, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("ok"):
+                self.log.info("Webhook registrado en: %s", webhook_url)
+                return True
+            self.log.warning("Telegram rechazó setWebhook: %s", data)
+            return False
+        except Exception as e:
+            self.log.warning("Error en setWebhook: %s", e)
+            return False
+
+    def delete_webhook(self) -> bool:
+        """Elimina el webhook activo (vuelve al modo polling)."""
+        url = f"https://api.telegram.org/bot{self.token}/deleteWebhook"
+        try:
+            resp = requests.post(url, json={"drop_pending_updates": False}, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("ok"):
+                self.log.info("Webhook eliminado correctamente")
+                return True
+            self.log.warning("Error eliminando webhook: %s", data)
+            return False
+        except Exception as e:
+            self.log.warning("Error en deleteWebhook: %s", e)
+            return False

@@ -5,7 +5,11 @@ import os
 import json
 import logging
 import sys
-import threading
+import asyncio
+import websockets
+from pathlib import Path
+from datetime import datetime
+from aiohttp import web
 
 from telegram_client import TelegramClient
 
@@ -28,6 +32,36 @@ TOPICOS = {
     "home/scripts/etig": "notificador_etig.py",
     "home/scripts/acadeu": "acadeu_notificador.py"
 }
+
+# WebSocket
+WS_HOST = os.getenv("WS_HOST", "0.0.0.0")
+WS_PORT = int(os.getenv("WS_PORT", "8765"))
+ws_clients = set()
+
+# Webhook
+WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "0.0.0.0")
+WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", "8766"))
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")  # e.g. https://notif.terispi.duckdns.org/webhook
+CLIENT_HTML = Path(__file__).with_name("websocket-client.html")
+
+
+def publish_immich_request(mqtt_client: mqtt.Client, conv_id: str, album_name: str, source: str) -> None:
+    payload = json.dumps({
+        "message_id": conv_id,
+        "immich": True,
+        "album_name": album_name,
+    })
+    mqtt_client.publish("home/scripts/acadeu", payload)
+    log.info("%s Immich: conv_id=%s album=%r -> MQTT publicado", source, conv_id, album_name)
+
+
+def publish_telegram_request(mqtt_client: mqtt.Client, conv_id: str, source: str) -> None:
+    payload = json.dumps({
+        "message_id": conv_id,
+    })
+    mqtt_client.publish("home/scripts/acadeu", payload)
+    log.info("%s Telegram: conv_id=%s -> MQTT publicado", source, conv_id)
 
 
 def on_connect(client, userdata, connect_flags, reason_code, properties):
@@ -53,43 +87,186 @@ def on_message(client, userdata, msg):
         subprocess.Popen(["python3", script], env=env)
 
 
-def _telegram_callback_loop(mqtt_client: mqtt.Client):
-    """
-    Long-polling de Telegram buscando callback_query.
-    Cuando recibe 'immich:<conv_id>', publica el mensaje MQTT equivalente.
-    """
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    if not token:
-        log.warning("TELEGRAM_BOT_TOKEN no configurado; polling de callbacks deshabilitado.")
+async def broadcast_ws(event_type: str, data: dict):
+    """Envía un evento a todos los clientes WebSocket conectados."""
+    if not ws_clients:
         return
+    
+    message = json.dumps({
+        "type": event_type,
+        "timestamp": datetime.now().isoformat(),
+        "data": data
+    })
+    
+    disconnected = set()
+    for ws in ws_clients:
+        try:
+            await ws.send(message)
+        except Exception as e:
+            log.warning("Error enviando a WebSocket: %s", e)
+            disconnected.add(ws)
+    
+    # Limpiar clientes desconectados
+    for ws in disconnected:
+        ws_clients.discard(ws)
 
-    tg = TelegramClient(token, None, log)
-    offset: int | None = None
-    log.info("Iniciando polling de callbacks de Telegram...")
 
-    while True:
-        updates = tg.get_updates(offset=offset, timeout=30)
-        for update in updates:
-            offset = update["update_id"] + 1
-            cb = update.get("callback_query")
-            if not cb:
-                continue
-            data = cb.get("data", "")
-            if not data.startswith("immich:"):
-                continue
+async def handle_ws_client(websocket, mqtt_client: mqtt.Client):
+    """Maneja conexiones de clientes WebSocket."""
+    ws_clients.add(websocket)
+    log.info("Cliente WebSocket conectado. Total: %d", len(ws_clients))
+    
+    try:
+        async for message in websocket:
+            try:
+                data = json.loads(message)
+                command = data.get("command")
+                _payload = data.get("data", {})
+                
+                if command == "ping":
+                    await websocket.send(json.dumps({"type": "pong"}))
+                elif command == "subscribe":
+                    # El cliente se suscribe a eventos
+                    await websocket.send(json.dumps({
+                        "type": "subscribed",
+                        "message": "Conectado al worker"
+                    }))
+                    log.info("Cliente suscripto a eventos")
+                elif command == "save_immich":
+                    conv_id = str(_payload.get("message_id", "")).strip()
+                    album_name = str(_payload.get("album_name", "")).strip()
+                    if not conv_id:
+                        await websocket.send(json.dumps({
+                            "type": "error",
+                            "message": "Falta message_id",
+                        }))
+                        continue
 
-            parts = data.split(":", 2)          # ["immich", "<conv_id>"] o ["immich", "<conv_id>", "<album>"]
+                    publish_immich_request(mqtt_client, conv_id, album_name, "WebSocket")
+                    await broadcast_ws("immich_requested", {
+                        "message_id": conv_id,
+                        "immich": True,
+                        "album_name": album_name,
+                        "source": "websocket",
+                    })
+                    await websocket.send(json.dumps({
+                        "type": "ack",
+                        "message": "Solicitud enviada",
+                        "data": {
+                            "message_id": conv_id,
+                            "album_name": album_name,
+                        },
+                    }))
+                elif command == "send_telegram":
+                    conv_id = str(_payload.get("message_id", "")).strip()
+                    if not conv_id:
+                        await websocket.send(json.dumps({
+                            "type": "error",
+                            "message": "Falta message_id",
+                        }))
+                        continue
+
+                    publish_telegram_request(mqtt_client, conv_id, "WebSocket")
+                    await broadcast_ws("telegram_requested", {
+                        "message_id": conv_id,
+                        "source": "websocket",
+                    })
+                    await websocket.send(json.dumps({
+                        "type": "ack",
+                        "message": "Solicitud de envio a Telegram enviada",
+                        "data": {
+                            "message_id": conv_id,
+                        },
+                    }))
+                else:
+                    log.warning("Comando WebSocket desconocido: %s", command)
+            except json.JSONDecodeError:
+                log.warning("Mensaje WebSocket inválido: %s", message)
+    except websockets.exceptions.ConnectionClosed:
+        log.info("Cliente WebSocket desconectado")
+    finally:
+        ws_clients.discard(websocket)
+        log.info("Cliente removido. Total: %d", len(ws_clients))
+
+
+async def start_websocket_server(mqtt_client: mqtt.Client):
+    """Inicia el servidor WebSocket."""
+    log.info("Iniciando servidor WebSocket en ws://%s:%d", WS_HOST, WS_PORT)
+    async with websockets.serve(lambda ws: handle_ws_client(ws, mqtt_client), WS_HOST, WS_PORT):
+        await asyncio.Future()  # run forever
+
+
+async def handle_telegram_webhook(request: web.Request, mqtt_client: mqtt.Client) -> web.Response:
+    """Recibe actualizaciones de Telegram via webhook POST."""
+    if WEBHOOK_SECRET:
+        secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if secret != WEBHOOK_SECRET:
+            log.warning("Webhook: token secreto inválido desde %s", request.remote)
+            return web.Response(status=403)
+
+    try:
+        update = await request.json()
+    except Exception as e:
+        log.warning("Webhook: payload inválido: %s", e)
+        return web.Response(status=400)
+
+    cb = update.get("callback_query")
+    if cb:
+        data_str = cb.get("data", "")
+        if data_str.startswith("immich:"):
+            parts = data_str.split(":", 2)  # ["immich", "<conv_id>"] o ["immich", "<conv_id>", "<album>"]
             conv_id = parts[1] if len(parts) > 1 else ""
             album_name = parts[2] if len(parts) > 2 else ""
 
-            payload = json.dumps({
+            publish_immich_request(mqtt_client, conv_id, album_name, "Webhook")
+
+            await broadcast_ws("telegram_callback", {
                 "message_id": conv_id,
                 "immich": True,
                 "album_name": album_name,
+                "source": "telegram",
             })
-            mqtt_client.publish("home/scripts/acadeu", payload)
-            log.info("Callback Immich: conv_id=%s album=%r → MQTT publicado", conv_id, album_name)
-            tg.answer_callback_query(cb["id"], text="✅ Guardando en Immich…")
+
+            token = os.getenv("TELEGRAM_BOT_TOKEN")
+            TelegramClient(token, None, log).answer_callback_query(cb["id"], text="✅ Guardando en Immich…")
+
+    return web.Response(status=200)
+
+
+async def start_webhook_server(mqtt_client: mqtt.Client):
+    """Inicia el servidor HTTP para recibir webhooks de Telegram."""
+    app = web.Application()
+    app.router.add_post("/webhook", lambda r: handle_telegram_webhook(r, mqtt_client))
+
+    async def handle_client_page(_request: web.Request) -> web.Response:
+        if not CLIENT_HTML.exists():
+            return web.Response(status=404, text="websocket-client.html no encontrado")
+        return web.FileResponse(CLIENT_HTML)
+
+    app.router.add_get("/client", handle_client_page)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, WEBHOOK_HOST, WEBHOOK_PORT)
+    await site.start()
+    log.info("Servidor webhook escuchando en http://%s:%d/webhook", WEBHOOK_HOST, WEBHOOK_PORT)
+
+    # Registrar el webhook con Telegram al arrancar
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if token and WEBHOOK_URL:
+        tg = TelegramClient(token, None, log)
+        tg.set_webhook(WEBHOOK_URL, secret=WEBHOOK_SECRET)
+    elif not WEBHOOK_URL:
+        log.warning("WEBHOOK_URL no configurada; el webhook de Telegram no se registrará automáticamente.")
+
+    await asyncio.Future()  # run forever
+
+
+async def async_main(mqtt_client: mqtt.Client):
+    await asyncio.gather(
+        start_websocket_server(mqtt_client),
+        start_webhook_server(mqtt_client),
+    )
 
 
 def main():
@@ -100,14 +277,16 @@ def main():
 
     try:
         client.connect(MQTT_BROKER, MQTT_PORT, 60)
-        log.info("Worker MQTT escuchando...")
-
-        t = threading.Thread(target=_telegram_callback_loop, args=(client,), daemon=True)
-        t.start()
-
-        client.loop_forever()
+        log.info("Worker MQTT conectado. Iniciando servidores async...")
+        client.loop_start()  # MQTT en su propio hilo, no bloqueante
+        asyncio.run(async_main(client))
+    except KeyboardInterrupt:
+        log.info("Deteniendo worker...")
     except Exception as e:
-        log.error("Error en worker MQTT: %s", e, exc_info=True)
+        log.error("Error en worker: %s", e, exc_info=True)
+    finally:
+        client.loop_stop()
+        client.disconnect()
 
 
 if __name__ == "__main__":

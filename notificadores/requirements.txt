@@ -4,3 +4,5 @@ gunicorn
 bs4
 dotenv
 paho-mqtt
+websockets
+aiohttp
