@@ -12,9 +12,14 @@ services:
       - /run/dbus:/run/dbus:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - /home/saran/notificadores:/config/scripts
+      - /run/dbus:/run/dbus:ro
     restart: unless-stopped
     privileged: true
     network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      
   #  zigbee2mqtt:
   #    container_name: zigbee2mqtt
   #    image: ghcr.io/koenkk/zigbee2mqtt
@@ -52,7 +57,25 @@ services:
       - ../nginx/certbot/conf:/etc/letsencrypt:ro
     restart: unless-stopped
 
-    
+#  theengsgateway:
+#    container_name: theengsgateway
+#    image: theengs/gateway:latest
+#    environment:
+#      - MQTT_HOST=192.168.1.118
+#      - MQTT_PORT=1883
+#      - MQTT_USERNAME=${MQTT_USER}
+#      - MQTT_PASSWORD=${MQTT_PASSWORD}
+#      - MQTT_PUB_TOPIC=home/theengs/BTtoMQTT
+#      - MQTT_SUB_TOPIC=home/theengs/MQTTtoBT
+#      - DISCOVERY=1
+#      - DISCOVERY_TOPIC=homeassistant/sensor
+#      - DISCOVERY_DEVICE_NAME=TheengsGateway      
+#      - LOG_LEVEL=INFO 
+#    volumes:
+#      - /var/run/dbus:/var/run/dbus
+#    privileged: true
+#    network_mode: host
+#    restart: unless-stopped
 #  nodered:
 #    container_name: nodered
 #    image: nodered/node-red:latest
