@@ -6,10 +6,30 @@ import requests
 
 
 class TelegramClient:
-    def __init__(self, token: str | None, chat_id: str | None, logger: logging.Logger):
+    def __init__(
+        self,
+        token: str | None,
+        chat_id: str | list[str] | None,
+        logger: logging.Logger,
+    ):
         self.token = token
-        self.chat_id = chat_id
+        self.chat_ids = self._parse_chat_ids(chat_id)
+        # Primary chat: usado para threading (reply_to_message_id) y para devolver
+        # el message_id en métodos de envío. Los demás chats reciben un broadcast
+        # best-effort sin threading.
+        self.chat_id = self.chat_ids[0] if self.chat_ids else None
         self.log = logger
+
+    @staticmethod
+    def _parse_chat_ids(value: str | list[str] | None) -> list[str]:
+        """Acepta un chat_id o una lista (o string separado por comas/espacios)."""
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple)):
+            items = [str(v).strip() for v in value]
+        else:
+            items = [c.strip() for c in str(value).replace(";", ",").split(",")]
+        return [c for c in items if c]
 
     def _message_id_from_response(self, resp: requests.Response, action: str) -> int | None:
         try:
@@ -81,24 +101,29 @@ class TelegramClient:
         reply_markup: dict | None = None,
     ) -> int | None:
         url = f"https://api.telegram.org/bot{self.token}/sendMessage"
-        payload = {
-            "chat_id": self.chat_id,
-            "text": text,
-            "parse_mode": parse_mode,
-        }
-        if reply_to_message_id is not None:
-            payload["reply_to_message_id"] = reply_to_message_id
-            payload["allow_sending_without_reply"] = True
-        if reply_markup is not None:
-            payload["reply_markup"] = reply_markup
+        primary_message_id: int | None = None
+        for idx, chat_id in enumerate(self.chat_ids):
+            is_primary = idx == 0
+            payload = {
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": parse_mode,
+            }
+            if is_primary and reply_to_message_id is not None:
+                payload["reply_to_message_id"] = reply_to_message_id
+                payload["allow_sending_without_reply"] = True
+            if reply_markup is not None:
+                payload["reply_markup"] = reply_markup
 
-        try:
-            resp = requests.post(url, json=payload, timeout=10)
-            resp.raise_for_status()
-            return self._message_id_from_response(resp, "sendMessage")
-        except Exception as e:
-            self.log.warning("Error enviando a Telegram: %s", e)
-            return None
+            try:
+                resp = requests.post(url, json=payload, timeout=10)
+                resp.raise_for_status()
+                msg_id = self._message_id_from_response(resp, f"sendMessage(chat={chat_id})")
+                if is_primary:
+                    primary_message_id = msg_id
+            except Exception as e:
+                self.log.warning("Error enviando a Telegram (chat=%s): %s", chat_id, e)
+        return primary_message_id
 
     def send_photo(
         self,
@@ -121,32 +146,37 @@ class TelegramClient:
         filename = f"nuestra_tierra{ext}"
 
         url = f"https://api.telegram.org/bot{self.token}/sendPhoto"
-        data = {
-            "chat_id": self.chat_id,
-            "caption": caption,
-        }
-        if reply_to_message_id is not None:
-            data["reply_to_message_id"] = reply_to_message_id
-            data["allow_sending_without_reply"] = True
-        if reply_markup is not None:
-            import json as _json
-            data["reply_markup"] = _json.dumps(reply_markup)
+        primary_message_id: int | None = None
+        for idx, chat_id in enumerate(self.chat_ids):
+            is_primary = idx == 0
+            data = {
+                "chat_id": chat_id,
+                "caption": caption,
+            }
+            if is_primary and reply_to_message_id is not None:
+                data["reply_to_message_id"] = reply_to_message_id
+                data["allow_sending_without_reply"] = True
+            if reply_markup is not None:
+                import json as _json
+                data["reply_markup"] = _json.dumps(reply_markup)
 
-        files = {
-            "photo": (
-                filename,
-                image_content,
-                content_type or "application/octet-stream",
-            )
-        }
+            files = {
+                "photo": (
+                    filename,
+                    image_content,
+                    content_type or "application/octet-stream",
+                )
+            }
 
-        try:
-            resp = requests.post(url, data=data, files=files, timeout=20)
-            resp.raise_for_status()
-            return self._message_id_from_response(resp, "sendPhoto")
-        except Exception as e:
-            self.log.warning("Error enviando imagen a Telegram: %s", e)
-            return None
+            try:
+                resp = requests.post(url, data=data, files=files, timeout=20)
+                resp.raise_for_status()
+                msg_id = self._message_id_from_response(resp, f"sendPhoto(chat={chat_id})")
+                if is_primary:
+                    primary_message_id = msg_id
+            except Exception as e:
+                self.log.warning("Error enviando imagen a Telegram (chat=%s): %s", chat_id, e)
+        return primary_message_id
 
     def send_document(
         self,
@@ -157,28 +187,33 @@ class TelegramClient:
         reply_to_message_id: int | None = None,
     ) -> int | None:
         url = f"https://api.telegram.org/bot{self.token}/sendDocument"
-        data: dict = {"chat_id": self.chat_id}
-        if caption:
-            data["caption"] = caption[:1024]
-        if reply_to_message_id is not None:
-            data["reply_to_message_id"] = reply_to_message_id
-            data["allow_sending_without_reply"] = True
+        primary_message_id: int | None = None
+        for idx, chat_id in enumerate(self.chat_ids):
+            is_primary = idx == 0
+            data: dict = {"chat_id": chat_id}
+            if caption:
+                data["caption"] = caption[:1024]
+            if is_primary and reply_to_message_id is not None:
+                data["reply_to_message_id"] = reply_to_message_id
+                data["allow_sending_without_reply"] = True
 
-        files = {
-            "document": (
-                filename,
-                file_content,
-                content_type or "application/octet-stream",
-            )
-        }
+            files = {
+                "document": (
+                    filename,
+                    file_content,
+                    content_type or "application/octet-stream",
+                )
+            }
 
-        try:
-            resp = requests.post(url, data=data, files=files, timeout=20)
-            resp.raise_for_status()
-            return self._message_id_from_response(resp, "sendDocument")
-        except Exception as e:
-            self.log.warning("Error enviando documento a Telegram: %s", e)
-            return None
+            try:
+                resp = requests.post(url, data=data, files=files, timeout=20)
+                resp.raise_for_status()
+                msg_id = self._message_id_from_response(resp, f"sendDocument(chat={chat_id})")
+                if is_primary:
+                    primary_message_id = msg_id
+            except Exception as e:
+                self.log.warning("Error enviando documento a Telegram (chat=%s): %s", chat_id, e)
+        return primary_message_id
 
     def send_file(
         self,
@@ -194,20 +229,25 @@ class TelegramClient:
             ext = mimetypes.guess_extension(mime) or ".jpg"
             safe_filename = filename or f"adjunto{ext}"
             url = f"https://api.telegram.org/bot{self.token}/sendPhoto"
-            data: dict = {"chat_id": self.chat_id}
-            if caption:
-                data["caption"] = caption[:1024]
-            if reply_to_message_id is not None:
-                data["reply_to_message_id"] = reply_to_message_id
-                data["allow_sending_without_reply"] = True
-            files = {"photo": (safe_filename, file_content, content_type or "application/octet-stream")}
-            try:
-                resp = requests.post(url, data=data, files=files, timeout=20)
-                resp.raise_for_status()
-                return self._message_id_from_response(resp, "sendPhoto(adjunto)")
-            except Exception as e:
-                self.log.warning("Error enviando adjunto imagen a Telegram: %s", e)
-                return None
+            primary_message_id: int | None = None
+            for idx, chat_id in enumerate(self.chat_ids):
+                is_primary = idx == 0
+                data: dict = {"chat_id": chat_id}
+                if caption:
+                    data["caption"] = caption[:1024]
+                if is_primary and reply_to_message_id is not None:
+                    data["reply_to_message_id"] = reply_to_message_id
+                    data["allow_sending_without_reply"] = True
+                files = {"photo": (safe_filename, file_content, content_type or "application/octet-stream")}
+                try:
+                    resp = requests.post(url, data=data, files=files, timeout=20)
+                    resp.raise_for_status()
+                    msg_id = self._message_id_from_response(resp, f"sendPhoto(adjunto,chat={chat_id})")
+                    if is_primary:
+                        primary_message_id = msg_id
+                except Exception as e:
+                    self.log.warning("Error enviando adjunto imagen a Telegram (chat=%s): %s", chat_id, e)
+            return primary_message_id
         else:
             return self.send_document(
                 file_content,
