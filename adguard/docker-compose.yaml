@@ -1,0 +1,18 @@
+services:
+  adguardhome:
+    image: adguard/adguardhome:latest
+    container_name: adguardhome
+    # host network es necesario para que funcione el servidor DHCP
+    # (necesita enviar/recibir paquetes broadcast en la red local)
+    network_mode: host
+    volumes:
+      - ./work:/opt/adguardhome/work
+      - ./conf:/opt/adguardhome/conf
+    restart: unless-stopped
+    # Puertos en modo host (solo a título informativo):
+    #   3000/tcp  → setup inicial (solo la primera vez)
+    #   8080/tcp  → UI web (configurable en AdGuardHome.yaml)
+    #   53/tcp+udp → DNS
+    #   67/udp    → DHCP servidor (DHCPv4)
+    #   68/udp    → DHCP cliente  (DHCPv4)
+    #   547/udp   → DHCP servidor (DHCPv6)

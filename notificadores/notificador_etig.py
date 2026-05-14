@@ -47,7 +47,7 @@ def scraping_unlz():
 def enviar_telegram(notificacion):
     # Formateamos el mensaje con Markdown
     texto = (
-        f"🔔 *Nueva Notificación*\n\n"
+        f"🔔 *ETIG*\n\n"
         f"*Título:* {notificacion['titulo']}\n"
         f"*De:* {notificacion['emisor']}\n"
         f"*Fecha:* {notificacion['fecha']}\n\n"
