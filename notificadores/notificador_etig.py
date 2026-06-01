@@ -92,21 +92,20 @@ def procesar_y_notificar(html_content):
         # Generar hash y verificar unicidad
         seed = f"{fecha_str}|{titulo.lower()}|{contenido[:50]}"
         n_id = hashlib.sha256(seed.encode()).hexdigest()
-        cursor.execute("SELECT 1 FROM notificaciones WHERE id = ?", (n_id,))
-        if cursor.fetchone() is None:
-            # Es nueva: Guardar y Enviar
-            notif_data = {
-                "titulo": titulo,
-                "emisor": ps[0].get_text(strip=True).replace('De:', '').strip(),
-                "fecha": fecha_str,
-                "contenido": contenido
-            }
+        notif_data = {
+            "titulo": titulo,
+            "emisor": ps[0].get_text(strip=True).replace('De:', '').strip(),
+            "fecha": fecha_str,
+            "contenido": contenido
+        }
+        cursor.execute(
+            "INSERT OR IGNORE INTO notificaciones VALUES (?, ?)",
+            (n_id, hoy.date().isoformat())
+        )
+        conn.commit()
+        if cursor.rowcount > 0:
+            # Es nueva: Enviar
             enviar_telegram(notif_data)
-            cursor.execute(
-                "INSERT INTO notificaciones VALUES (?, ?)",
-                (n_id, hoy.date().isoformat())
-            )
-            conn.commit()
 
     conn.close()
 

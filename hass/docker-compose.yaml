@@ -76,24 +76,24 @@ services:
 #    privileged: true
 #    network_mode: host
 #    restart: unless-stopped
-#  nodered:
-#    container_name: nodered
-#    image: nodered/node-red:latest
-#    volumes:
-#      - ./nodered:/data
-#    ports:
-#      - 1880:1880
-#    restart: unless-stopped
-#    environment:
-#      - TZ=America/Argentina/Buenos_Aires
-#    # Agrega aquí tu STM32 cuando lo conectes:
-#    # devices:
-#    #   - /dev/serial/by-id/usb-STM32_Virtual_ComPort-if00:/dev/ttyUSB1
+  nodered:
+    container_name: nodered
+    image: nodered/node-red:latest
+    volumes:
+      - ./nodered:/data
+    ports:
+      - 1880:1880
+    restart: unless-stopped
+    environment:
+      - TZ=America/Argentina/Buenos_Aires
+    # Agrega aquí tu STM32 cuando lo conectes:
+    # devices:
+    #   - /dev/serial/by-id/usb-STM32_Virtual_ComPort-if00:/dev/ttyUSB1
 #    depends_on:
 #      - mosquitto
-#    user: 1000:1000
-#    group_add:
-#      - dialout # Para acceso a puertos serie
+    user: 1000:1000
+    group_add:
+      - dialout # Para acceso a puertos serie
 networks: {}
 
 #  otbr:

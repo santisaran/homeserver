@@ -299,12 +299,21 @@ class TelegramClient:
             payload["secret_token"] = secret
         try:
             resp = requests.post(url, json=payload, timeout=10)
-            resp.raise_for_status()
-            data = resp.json()
+            try:
+                data = resp.json()
+            except ValueError:
+                resp.raise_for_status()
+                self.log.warning("Telegram devolvió respuesta no-JSON en setWebhook: %s", resp.text[:500])
+                return False
             if data.get("ok"):
                 self.log.info("Webhook registrado en: %s", webhook_url)
                 return True
-            self.log.warning("Telegram rechazó setWebhook: %s", data)
+            self.log.warning(
+                "Telegram rechazó setWebhook (HTTP %s): error_code=%s description=%s",
+                resp.status_code,
+                data.get("error_code"),
+                data.get("description"),
+            )
             return False
         except Exception as e:
             self.log.warning("Error en setWebhook: %s", e)
