@@ -8,6 +8,7 @@ services:
       - UMASK=007
     volumes:
       - ./homeassistant:/config
+      - ./homeassistant/casita-1733-f98989bde6ca.json:/config/google_key.json:ro
       - /etc/localtime:/etc/localtime:ro
       - /run/dbus:/run/dbus:ro
       - /var/run/docker.sock:/var/run/docker.sock

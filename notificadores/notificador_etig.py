@@ -41,10 +41,10 @@ def scraping_unlz():
                                  "LoginForm[password]": PASSWORD,
                                  "LoginForm[rememberMe]": "1"})
     URL_NOTIFICATIONS = "https://etig.ingenieria.unlz.edu.ar/index.php?r=notificaciones%2Fmisnotificaciones"
-    return session.get(URL_NOTIFICATIONS).text
+    return session, session.get(URL_NOTIFICATIONS).text
 
 
-def enviar_telegram(notificacion):
+def enviar_telegram(notificacion, session=None):
     # Formateamos el mensaje con Markdown
     texto = (
         f"🔔 *ETIG*\n\n"
@@ -56,8 +56,22 @@ def enviar_telegram(notificacion):
     message_id = TELEGRAM_CLIENT.send_text(texto, parse_mode="Markdown")
     if message_id is None:
         log.error("Error enviando a Telegram desde ETIG")
+    if session and notificacion.get('enlaces'):
+        for enlace in notificacion['enlaces']:
+            try:
+                resp = session.get(enlace['url'], timeout=30)
+                resp.raise_for_status()
+                content_type = resp.headers.get('Content-Type', 'application/octet-stream')
+                TELEGRAM_CLIENT.send_document(
+                    file_content=resp.content,
+                    filename=enlace['texto'],
+                    content_type=content_type,
+                    reply_to_message_id=message_id,
+                )
+            except Exception as e:
+                log.warning("Error descargando/enviando adjunto '%s': %s", enlace['texto'], e)
 
-def procesar_y_notificar(html_content):
+def procesar_y_notificar(html_content, session=None):
     # Inicializar DB y limpiar registros > 4 días
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -76,7 +90,12 @@ def procesar_y_notificar(html_content):
     hoy = datetime.now()
     limite_busqueda = hoy - timedelta(days=4)
     for panel in paneles:
-        titulo = panel.find('div', class_='panel-heading').get_text(strip=True)
+        h5 = panel.find('div', class_='panel-heading').find('h5')
+        # Usamos solo los nodos de texto directos del h5, ignorando spans dinámicos
+        # como "Nuevo" o "Urgente" que cambiarían el hash entre ejecuciones
+        titulo_base = ''.join(h5.find_all(string=True, recursive=False)).strip()
+        es_urgente = bool(h5.find('span', style=lambda s: s and 'red' in s))
+        titulo = titulo_base + (' 🚨 Urgente' if es_urgente else '')
         ps = panel.find('div', class_='panel-body').find_all('p', recursive=False)
         fecha_str = ps[1].get_text(strip=True).replace('Fecha:', '').strip()
         contenido = ps[2].get_text(strip=True)
@@ -90,13 +109,22 @@ def procesar_y_notificar(html_content):
             continue
 
         # Generar hash y verificar unicidad
-        seed = f"{fecha_str}|{titulo.lower()}|{contenido[:50]}"
+        seed = f"{fecha_str}|{titulo_base.lower()}|{contenido[:50]}"
         n_id = hashlib.sha256(seed.encode()).hexdigest()
+        footer = panel.find('div', class_='panel-footer')
+        enlaces = []
+        if footer:
+            for a in footer.find_all('a', class_='links'):
+                href = a.get('href', '')
+                if href and not href.startswith('http'):
+                    href = 'https://etig.ingenieria.unlz.edu.ar' + href
+                enlaces.append({'texto': a.get_text(strip=True), 'url': href})
         notif_data = {
             "titulo": titulo,
             "emisor": ps[0].get_text(strip=True).replace('De:', '').strip(),
             "fecha": fecha_str,
-            "contenido": contenido
+            "contenido": contenido,
+            "enlaces": enlaces
         }
         cursor.execute(
             "INSERT OR IGNORE INTO notificaciones VALUES (?, ?)",
@@ -105,7 +133,7 @@ def procesar_y_notificar(html_content):
         conn.commit()
         if cursor.rowcount > 0:
             # Es nueva: Enviar
-            enviar_telegram(notif_data)
+            enviar_telegram(notif_data, session=session)
 
     conn.close()
 
@@ -113,8 +141,8 @@ def procesar_y_notificar(html_content):
 if __name__ == "__main__":
     try:
         # Aquí iría tu lógica de login y obtención del HTML
-        html = scraping_unlz() 
-        procesar_y_notificar(html)
+        session, html = scraping_unlz()
+        procesar_y_notificar(html, session=session)
         log.info("Check finalizado: %s", datetime.now())
     except Exception as e:
         log.error("Error en el loop: %s", e, exc_info=True)

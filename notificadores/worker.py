@@ -18,6 +18,7 @@ dotenv.load_dotenv()
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
+
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 log = logging.getLogger(__name__)
@@ -192,6 +193,8 @@ async def handle_ws_client(websocket, mqtt_client: mqtt.Client):
 async def start_websocket_server(mqtt_client: mqtt.Client):
     """Inicia el servidor WebSocket."""
     log.info("Iniciando servidor WebSocket en ws://%s:%d", WS_HOST, WS_PORT)
+    # Silenciar los errores de handshake de clientes HTTP que no son WebSocket
+    logging.getLogger("websockets.server").setLevel(logging.CRITICAL)
     async with websockets.serve(lambda ws: handle_ws_client(ws, mqtt_client), WS_HOST, WS_PORT):
         await asyncio.Future()  # run forever
 
@@ -237,6 +240,14 @@ async def start_webhook_server(mqtt_client: mqtt.Client):
     """Inicia el servidor HTTP para recibir webhooks de Telegram."""
     app = web.Application()
     app.router.add_post("/webhook", lambda r: handle_telegram_webhook(r, mqtt_client))
+
+    async def handle_webhook_get(_request: web.Request) -> web.Response:
+        return web.Response(
+            content_type="application/json",
+            text='{"ok":true,"status":"webhook activo"}',
+        )
+
+    app.router.add_get("/webhook", handle_webhook_get)
 
     async def handle_client_page(_request: web.Request) -> web.Response:
         if not CLIENT_HTML.exists():
