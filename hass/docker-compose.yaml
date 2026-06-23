@@ -3,17 +3,16 @@ services:
     container_name: homeassistant
     image: ghcr.io/home-assistant/home-assistant:stable
     environment:
-      - PUID=1000
-      - PGID=1000
       - UMASK=007
     volumes:
       - ./homeassistant:/config
       - ./homeassistant/casita-1733-f98989bde6ca.json:/config/google_key.json:ro
       - /etc/localtime:/etc/localtime:ro
-      - /run/dbus:/run/dbus:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - /home/saran/notificadores:/config/scripts
+      - /home/saran/hass_media:/media
       - /run/dbus:/run/dbus:ro
+        #      - /var/run/dbus:/var/run/dbus:ro
     restart: unless-stopped
     privileged: true
     network_mode: host
@@ -95,6 +94,23 @@ services:
     user: 1000:1000
     group_add:
       - dialout # Para acceso a puertos serie
+
+  frigate:
+    container_name: frigate
+    privileged: true
+    restart: unless-stopped
+    image: ghcr.io/blakeblackshear/frigate:stable
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./frigate:/config
+      - /path/to/your/storage:/media/frigate
+    ports:
+      - "5000:5000"
+      - "8554:8554" # RTSP feeds
+    environment:
+      FRIGATE_RTSP_PASSWORD: ${FRIGATE_PASS:-CAMBIAR_PASSWORD}
+
+
 networks: {}
 
 #  otbr:

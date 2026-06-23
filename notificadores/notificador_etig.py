@@ -30,7 +30,7 @@ TELEGRAM_CLIENT = TelegramClient(TOKEN, CHAT_ID, log)
 
 
 def scraping_unlz():
-    LOGIN_URL = "https://etig.ingenieria.unlz.edu.ar/index.php?r=site%2Flogin"
+    LOGIN_URL = "https://etig-academica.ingenieria.unlz.edu.ar/index.php?r=site%2Flogin"
     session = requests.Session()
     response = session.get(LOGIN_URL)
     soup = BeautifulSoup(response.text, 'html.parser')

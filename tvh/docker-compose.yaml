@@ -1,0 +1,18 @@
+services:
+  tvheadend:
+    image: lscr.io/linuxserver/tvheadend:latest
+    container_name: tvheadend
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    volumes:
+      - .conf/config:/config
+      - /mnt/discocho/recordings:/recordings
+    ports:
+      - 9981:9981
+      - 9982:9982
+    devices:
+      - /dev/dvb:/dev/dvb 
+    restart: unless-stopped
+

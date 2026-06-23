@@ -70,3 +70,12 @@ archive/*
 # ─── Adguard ─────────────────────────────────────
 adguard/conf/*
 adguard/work/*
+
+
+# TVheadend
+
+tvh/.conf/config*
+
+# Frigate
+
+hass/frigate*
