@@ -28,7 +28,7 @@ paperless/consume/
 jellyfin/config/
 jellyfin/cache/
 
-esphome/config/
+esphome/conf
 
 flame/data/
 
@@ -74,7 +74,7 @@ adguard/work/*
 
 # TVheadend
 
-tvh/.conf/config*
+tvh/tvh/config*
 
 # Frigate
 

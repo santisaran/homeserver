@@ -8,7 +8,7 @@ services:
       - TZ=America/New_York
       - "RUN_OPTS=--debug mpegts,webui"
     volumes:
-      - .conf/config:/config
+      - ./tvh/config:/config
       - /mnt/discocho/recordings:/recordings
     ports:
       - 9981:9981
