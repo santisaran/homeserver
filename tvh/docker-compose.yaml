@@ -6,6 +6,7 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=America/New_York
+      - "RUN_OPTS=--debug mpegts,webui"
     volumes:
       - .conf/config:/config
       - /mnt/discocho/recordings:/recordings

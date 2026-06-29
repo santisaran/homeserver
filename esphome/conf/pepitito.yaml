@@ -54,6 +54,26 @@ captive_portal:
 #          speed: 10
 #          width: 50
 ## Entradas para controlar las salidas con diferentes clics
+script:
+  - id: toggle_luces_123
+    then:
+      - if:
+          condition:
+            or:
+              - switch.is_on: luz_1
+              - switch.is_on: luz_2
+              - switch.is_on: luz_3
+          then:
+            # Si alguna está prendida, apagar todo
+            - switch.turn_off: luz_1
+            - switch.turn_off: luz_2
+            - switch.turn_off: luz_3
+          else:
+            # Si todas están apagadas, prender todo
+            - switch.turn_on: luz_1
+            - switch.turn_on: luz_2
+            - switch.turn_on: luz_3
+
 binary_sensor:
   - platform: gpio
     pin:
@@ -62,12 +82,16 @@ binary_sensor:
         input: true
         pullup: true
     name: "Interruptor Luz 1"
+    filters:
+      - delayed_on: 50ms      # debounce: ignora pulsos menores a 50ms
     on_press:
       - switch.toggle: luz_1
     on_double_click:
-      - switch.turn_on: luz_1
-      - delay: 300s # 5 minutos = 300 segundos
-      - switch.turn_off: luz_1
+      min_length: 50ms
+      max_length: 350ms
+      then:
+        - script.execute: toggle_luces_123
+
   - platform: gpio
     pin:
       number: 5
@@ -75,12 +99,18 @@ binary_sensor:
         input: true
         pullup: true
     name: "Interruptor Luz 2"
+    filters:
+      - delayed_on: 50ms
     on_press:
       - switch.toggle: luz_4
     on_double_click:
-      - switch.turn_on: luz_4
-      - delay: 300s # 5 minutos = 300 segundos
-      - switch.turn_off: luz_4
+      min_length: 50ms
+      max_length: 350ms
+      then:
+        - switch.turn_on: luz_1
+        - switch.turn_on: luz_2
+        - switch.turn_on: luz_3
+
   - platform: gpio
     pin:
       number: 6
@@ -88,30 +118,17 @@ binary_sensor:
         input: true
         pullup: true
     name: "Interruptor Luz 3"
+    filters:
+      - delayed_on: 50ms
     on_press:
       - switch.toggle: luz_3
     on_double_click:
-      - switch.turn_on: luz_3
-      - delay: 300s # 5 minutos = 300 segundos
-      - switch.turn_off: luz_3
-
-  - platform: gpio
-    pin:
-      number: 18
-      mode: 
-        input: true
-        pullup: true
-    name: "sw18"
-
-
-  - platform: gpio
-    pin:
-      number: 19
-      mode: 
-        input: true
-        pullup: true
-    name: "sw19"
-  
+      min_length: 50ms
+      max_length: 350ms
+      then:
+        - switch.turn_on: luz_1
+        - switch.turn_on: luz_2
+        - switch.turn_on: luz_3
   
 # Salidas para las luces
 switch:
