@@ -5,12 +5,24 @@ services:
     restart:  unless-stopped
     network_mode: host 
     volumes: 
-      - ${USERDIR:-$HOME}/dockers/musicassistant/data:/data/
+      - ./data:/data/
       - /mnt/discocho/Música:/media/
     cap_add: 
       - SYS_ADMIN 
-      - DAC_READ_SEARCH 
+      - DAC_READ_SEARCH
+    devices:
+      - /dev/snd:/dev/snd 
+      - /dev/dri:/dev/dri
     security_opt: 
       - apparmor:unconfined 
     environment:
         - LOG_LEVEL=info
+        - TZ=America/Argentina/Buenos_Aires
+  pot-provider:
+    build:
+      context: ./bgutil-ytdlp-pot-provider/server
+    container_name: pot-provider
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - TZ=America/Argentina/Buenos_Aires

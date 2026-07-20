@@ -10,10 +10,12 @@ services:
       - PASSWORD_HASH=${PASSWORD_HASH}
 
         # DNS que usarán los clientes (opcional)
-      - WG_DEFAULT_DNS=1.1.1.1,1.0.0.1
+      - WG_DEFAULT_DNS=192.168.1.118,1.1.1.1
       
       # Permitir acceso a la red local (importante para Transmission)
-      - WG_ALLOWED_IPS=192.168.1.0/24
+      - WG_ALLOWED_IPS=192.168.1.0/24,10.8.0.0/24
+
+      - WG_DEFAULT_DNS=192.168.1.118,1.1.1.1
       
       # Puerto de Wireguard (puedes cambiarlo)
       - WG_PORT=51820

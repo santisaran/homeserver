@@ -79,3 +79,6 @@ tvh/tvh/config*
 # Frigate
 
 hass/frigate*
+
+# mussicassistant
+musicassistant/data/

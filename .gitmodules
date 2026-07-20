@@ -1,0 +1,3 @@
+[submodule "musicassistant/bgutil-ytdlp-pot-provider"]
+	path = musicassistant/bgutil-ytdlp-pot-provider
+	url = https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git

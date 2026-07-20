@@ -17,6 +17,7 @@ services:
       - ./config:/config
       - ${DOWNLOADS_DIR:-/mnt/discocho/Descargas}:/downloads
       - ${WATCH_DIR:-/home/saran/torrents}:/watch
+      - ${VIDEO_DIR:-/mnt/discocho/Videos}:/video
     ports:
       - 9091:9091
       - 51413:51413

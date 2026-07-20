@@ -1,19 +1,17 @@
 services:
   tvheadend:
-    image: lscr.io/linuxserver/tvheadend:latest
+    image: ghcr.io/tvheadend/tvheadend:master-debian
     container_name: tvheadend
     environment:
-      - PUID=1000
-      - PGID=1000
       - TZ=America/New_York
-      - "RUN_OPTS=--debug mpegts,webui"
     volumes:
-      - ./tvh/config:/config
-      - /mnt/discocho/recordings:/recordings
+      - /home/saran/docker/homeserver/tvh/config:/var/lib/tvheadend:rw
+      - /mnt/discocho/recordings:/var/lib/tvheadend/recordings:rw
     ports:
       - 9981:9981
       - 9982:9982
     devices:
       - /dev/dvb:/dev/dvb 
     restart: unless-stopped
+    command: ["--debug", "mpegts,webui", "--noacl"]
 

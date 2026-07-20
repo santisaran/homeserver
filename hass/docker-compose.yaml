@@ -95,24 +95,24 @@ services:
     group_add:
       - dialout # Para acceso a puertos serie
 
-  frigate:
-    container_name: frigate
-    privileged: true
-    restart: unless-stopped
-    image: ghcr.io/blakeblackshear/frigate:stable
-    shm_size: "512m" # <-- Agrega o modifica este valor
-    devices:
-      - /dev/dri/renderD128:/dev/dri/renderD128
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - ./frigate:/config
-      - /mnt/discocho/camaras:/media/frigate
-    ports:
-      - "5000:5000"
-      - "8554:8554" # RTSP feeds
-    environment:
-      FRIGATE_RTSP_PASSWORD: $FRIGATE_PASS
-
+        #  frigate:
+        #    container_name: frigate
+        #    privileged: true
+        #    restart: unless-stopped
+        #    image: ghcr.io/blakeblackshear/frigate:stable
+        #    shm_size: "512m" # <-- Agrega o modifica este valor
+        #    devices:
+        #      - /dev/dri/renderD128:/dev/dri/renderD128
+        #    volumes:
+        #      - /etc/localtime:/etc/localtime:ro
+        #      - ./frigate:/config
+        #      - /mnt/discocho/camaras:/media/frigate
+        #    ports:
+        #      - "5000:5000"
+        #      - "8554:8554" # RTSP feeds
+        #    environment:
+        #      FRIGATE_RTSP_PASSWORD: $FRIGATE_PASS
+        #
 
 networks: {}
 

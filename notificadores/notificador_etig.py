@@ -35,12 +35,13 @@ def scraping_unlz():
     response = session.get(LOGIN_URL)
     soup = BeautifulSoup(response.text, 'html.parser')
     csrf_token = soup.find('meta', attrs={'name': 'csrf-token'})['content']
+
     response = session.post(LOGIN_URL, data={"_csrf-frontend": csrf_token,
                                  "LoginForm[userType]": "familiar",
                                  "LoginForm[username]": USERNAME,
                                  "LoginForm[password]": PASSWORD,
                                  "LoginForm[rememberMe]": "1"})
-    URL_NOTIFICATIONS = "https://etig.ingenieria.unlz.edu.ar/index.php?r=notificaciones%2Fmisnotificaciones"
+    URL_NOTIFICATIONS = "https://etig-academica.ingenieria.unlz.edu.ar/index.php?r=notificaciones%2Fmisnotificaciones"
     return session, session.get(URL_NOTIFICATIONS).text
 
 
@@ -50,7 +51,7 @@ def enviar_telegram(notificacion, session=None):
         f"🔔 *ETIG*\n\n"
         f"*Título:* {notificacion['titulo']}\n"
         f"*De:* {notificacion['emisor']}\n"
-        f"*Fecha:* {notificacion['fecha']}\n\n"
+        f"*Fecha:* {notificacion['fecha']}\n\n" 
         f"{notificacion['contenido']}"
     )
     message_id = TELEGRAM_CLIENT.send_text(texto, parse_mode="Markdown")
@@ -117,7 +118,7 @@ def procesar_y_notificar(html_content, session=None):
             for a in footer.find_all('a', class_='links'):
                 href = a.get('href', '')
                 if href and not href.startswith('http'):
-                    href = 'https://etig.ingenieria.unlz.edu.ar' + href
+                    href = 'https://etig-academica.ingenieria.unlz.edu.ar' + href
                 enlaces.append({'texto': a.get_text(strip=True), 'url': href})
         notif_data = {
             "titulo": titulo,
