@@ -82,3 +82,19 @@ hass/frigate*
 
 # mussicassistant
 musicassistant/data/
+
+
+# arr
+
+arr/radarr/config
+arr/jackett/config
+arr/bazarr/config
+arr/sonarr/config
+
+# rustdesk
+
+rustdesk/data
+
+# Visual 
+
+.claude

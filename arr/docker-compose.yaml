@@ -1,0 +1,92 @@
+---
+# Stack ARR: Radarr + Sonarr + Jackett + FlareSolverr + Bazarr
+# Transmission corre en su propio compose (puerto 9091 del host)
+# Para conectar a Transmission desde estos containers usar: http://host.docker.internal:9091
+
+services:
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Argentina/Buenos_Aires
+    volumes:
+      - ./radarr/config:/config
+      - ${MOVIES_DIR:-/mnt/discocho/Videos/Peliculas}:/movies
+      - ${DOWNLOADS_DIR:-/mnt/discocho/Descargas}:/downloads
+    ports:
+      - 7878:7878
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    restart: unless-stopped
+    networks:
+      - arr
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Argentina/Buenos_Aires
+    volumes:
+      - ./sonarr/config:/config
+      - ${TV_DIR:-/mnt/discocho/Videos/Series}:/tv
+      - ${DOWNLOADS_DIR:-/mnt/discocho/Descargas}:/downloads
+    ports:
+      - 8989:8989
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    restart: unless-stopped
+    networks:
+      - arr
+
+  jackett:
+    image: lscr.io/linuxserver/jackett:latest
+    container_name: jackett
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Argentina/Buenos_Aires
+      - AUTO_UPDATE=true
+    volumes:
+      - ./jackett/config:/config
+    ports:
+      - 9117:9117
+    restart: unless-stopped
+    networks:
+      - arr
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - LOG_LEVEL=info
+      - TZ=America/Argentina/Buenos_Aires
+    ports:
+      - 8191:8191
+    restart: unless-stopped
+    networks:
+      - arr
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Argentina/Buenos_Aires
+    volumes:
+      - ./bazarr/config:/config
+      - ${MOVIES_DIR:-/mnt/discocho/Videos/Peliculas}:/movies
+      - ${TV_DIR:-/mnt/discocho/Videos/Series}:/tv
+    ports:
+      - 6767:6767
+    restart: unless-stopped
+    networks:
+      - arr
+
+networks:
+  arr:
+    name: arr

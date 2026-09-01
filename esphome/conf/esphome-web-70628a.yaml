@@ -1,5 +1,5 @@
 substitutions:
-  name: esphome-web-70628a
+  name: techo2casa
   friendly_name: TechoCasa
 
 esphome:
@@ -95,6 +95,8 @@ sensor:
 logger:
 # Enable Home Assistant API
 api:
+  encryption:
+    key: !secret api_encryption_key
 
 # Allow Over-The-Air updates
 ota:
@@ -106,6 +108,7 @@ improv_serial:
 wifi:
   # Set up a wifi access point
   ap: {}
+  use_address: 192.168.1.107
 
 # In combination with the `ap` this allows the user
 # to provision wifi credentials to the device via WiFi AP.
@@ -117,3 +120,7 @@ dashboard_import:
 
 # To have a "next url" for improv serial
 web_server:
+  version: 3
+  auth:
+    password: !secret web_password
+    username: saran

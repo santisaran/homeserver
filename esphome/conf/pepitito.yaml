@@ -156,3 +156,10 @@ switch:
     pin: 8
     name: "Calle 00"
     id: luz_6
+
+mdns:
+
+web_server:
+  auth:
+    password: !secret web_password
+    username: saran
