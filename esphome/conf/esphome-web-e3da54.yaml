@@ -21,8 +21,8 @@ api:
 
 # Allow Over-The-Air updates
 ota:
-- platform: esphome
-  password: !secret ota_password
+  - platform: esphome
+    password: !secret ota_password
 
 wifi:
   ssid: !secret wifi_ssid
@@ -40,8 +40,31 @@ remote_transmitter:
     clock_resolution: 1000000
     non_blocking: true
 
-
 script:
+  - id: send_rf_porton
+    parameters:
+      code_str: string
+    then:
+      - remote_transmitter.transmit_raw:
+          code: !lambda |-
+            std::vector<int32_t> raw;
+            raw.reserve(code_str.size() * 2);
+            for (char c : code_str) {
+              if (c == '0') {
+                // 0: 500ms con señal, 1000ms sin señal
+                raw.push_back(-1000); // LOW
+                raw.push_back(500);   // HIGH
+              } else {
+                // 1: 1000ms con señal, 500ms sin señal
+                raw.push_back(-500);  // LOW
+                raw.push_back(1000);  // HIGH
+              }
+            }
+            return raw;
+          repeat:
+            times: 5
+            wait_time: 10ms
+
   - id: send_rf_custom
     parameters:
       code_str: string
@@ -63,6 +86,7 @@ script:
           repeat:
             times: 5
             wait_time: 7.5ms
+
 # Componente Ventilador para Home Assistant
 fan:
   - platform: template
@@ -71,30 +95,61 @@ fan:
     icon: "mdi:fan"
     speed_count: 6
     has_direction: true
+    restore_mode: ALWAYS_OFF
     
     on_turn_on:
       - script.execute:
           id: send_rf_custom
-          code_str: "100100000111110101101000011000010"
+          code_str: !secret rf_fan_on
 
     on_turn_off:
       - script.execute:
           id: send_rf_custom
-          code_str: "100100000111110101101011010000000"
+          code_str: !secret rf_fan_off
 
     on_speed_set:
-      - script.execute:
-          id: send_rf_custom
-          code_str: !lambda |-
-            switch (x) {
-              case 1: return "100100000111110101101000011000010";
-              case 2: return "100100000111110101101001011100010";
-              case 3: return "100100000111110101101110000000010";
-              case 4: return "100100000111110101100101000110110";
-              case 5: return "100100000111110101100111101000100";
-              case 6: return "100100000111110101100110001110100";
-              default: return "100100000111110101101000011000010";
-            }
+      - if:
+          condition:
+            lambda: 'return x == 1;'
+          then:
+            - script.execute:
+                id: send_rf_custom
+                code_str: !secret rf_fan_speed_1
+      - if:
+          condition:
+            lambda: 'return x == 2;'
+          then:
+            - script.execute:
+                id: send_rf_custom
+                code_str: !secret rf_fan_speed_2
+      - if:
+          condition:
+            lambda: 'return x == 3;'
+          then:
+            - script.execute:
+                id: send_rf_custom
+                code_str: !secret rf_fan_speed_3
+      - if:
+          condition:
+            lambda: 'return x == 4;'
+          then:
+            - script.execute:
+                id: send_rf_custom
+                code_str: !secret rf_fan_speed_4
+      - if:
+          condition:
+            lambda: 'return x == 5;'
+          then:
+            - script.execute:
+                id: send_rf_custom
+                code_str: !secret rf_fan_speed_5
+      - if:
+          condition:
+            lambda: 'return x == 6;'
+          then:
+            - script.execute:
+                id: send_rf_custom
+                code_str: !secret rf_fan_speed_6
           
 # Botones adicionales del ventilador y control de luz
 button:
@@ -106,7 +161,7 @@ button:
       - fan.turn_off: ventilador_pieza_adultos
       - script.execute:
           id: send_rf_custom
-          code_str: "100100000111110101100011000111010" # all_off
+          code_str: !secret rf_fan_all_off
 
   # Controles de Luz
   - platform: template
@@ -115,7 +170,7 @@ button:
     on_press:
       - script.execute:
           id: send_rf_custom
-          code_str: "100100000111110101100100001010010" # light_switch
+          code_str: !secret rf_light_switch
 
   - platform: template
     name: "Luz Bajar Brillo"
@@ -123,7 +178,7 @@ button:
     on_press:
       - script.execute:
           id: send_rf_custom
-          code_str: "100100000111110101100010001111100" # light-down
+          code_str: !secret rf_light_down
 
   - platform: template
     name: "Luz Subir Brillo"
@@ -131,7 +186,7 @@ button:
     on_press:
       - script.execute:
           id: send_rf_custom
-          code_str: "100100000111110101101000110110100" # light-up
+          code_str: !secret rf_light_up
 
   - platform: template
     name: "Luz Cambiar Color"
@@ -139,7 +194,7 @@ button:
     on_press:
       - script.execute:
           id: send_rf_custom
-          code_str: "100100000111110101101010110010010" # light-color
+          code_str: !secret rf_light_color
 
   # Temporizadores
   - platform: template
@@ -148,7 +203,7 @@ button:
     on_press:
       - script.execute:
           id: send_rf_custom
-          code_str: "100100000111110101100001010110110" # 1h
+          code_str: !secret rf_timer_1h
 
   - platform: template
     name: "Temporizador 4h"
@@ -156,4 +211,17 @@ button:
     on_press:
       - script.execute:
           id: send_rf_custom
-          code_str: "100100000111110101101100111111000" # 4h
+          code_str: !secret rf_timer_4h
+
+  - platform: template
+    name: "Porton"
+    icon: "mdi:gate"
+    on_press:
+      - script.execute:
+          id: send_rf_porton
+          code_str: !secret ID_RF_PORTON
+
+web_server:
+  auth:
+    password: !secret web_password
+    username: saran
