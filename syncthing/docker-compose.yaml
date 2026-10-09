@@ -12,5 +12,6 @@ services:
       - /mnt/discocho/files/celuSanti:/var/syncthing/celuSanti
       - /mnt/discocho/files/celuVicky:/var/syncthing/celuVicky
       - /mnt/discocho/files/tabletDante:/var/syncthing/tabletDante
+      - /home/saran/docker/homeserver/esphome/conf:/var/syncthing/esphome
     network_mode: host
     restart: unless-stopped

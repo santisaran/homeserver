@@ -86,6 +86,8 @@ restic backup \
     \
     "$DOCKERS_DIR/flame/data" \
     \
+    "$DOCKERS_DIR/homebox/data" \
+    \
     "$DOCKERS_DIR/nginx/nginx/conf" \
     "$DOCKERS_DIR/nginx/certbot/conf" \
     \

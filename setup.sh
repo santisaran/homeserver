@@ -75,8 +75,9 @@ cat << 'EOF'
   9. wg-easy        → VPN WireGuard
   ─── Extras ─────
   10. flame         → dashboard de inicio
-  11. transmission  → cliente torrent
-  12. minecraft     → servidor Minecraft
+  11. homebox       → inventario doméstico
+  12. transmission  → cliente torrent
+  13. minecraft     → servidor Minecraft
 
   Levanta cada stack con: cd <nombre> && docker compose up -d
 

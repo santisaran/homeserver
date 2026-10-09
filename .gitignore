@@ -32,6 +32,8 @@ esphome/conf
 
 flame/data/
 
+homebox/data/
+
 transmission/config/
 
 wg-easy/data/
