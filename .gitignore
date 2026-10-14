@@ -97,6 +97,12 @@ arr/sonarr/config
 
 rustdesk/data
 
+
+# Beszel
+
+beszel/beszel_agent_data/
+beszel/beszel_data/
+
 # Visual 
 
 .claude
